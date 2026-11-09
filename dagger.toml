@@ -1,0 +1,13 @@
+[modules.dang-sdk]
+source = "github.com/dagger/dang-sdk@v1.0.1"
+
+[modules.e2e]
+source = "./.dagger/modules/e2e"
+main = true
+
+[sdks.dang]
+module = "dang-sdk"
+
+[sdks.dang.scopes.".dagger/modules/e2e"]
+is-module = true
+name = "e2e"

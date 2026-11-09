@@ -1,0 +1,17 @@
+"""
+End-to-end checks for the Ruby module family.
+"""
+type E2e {
+  let assert(ok: Boolean!, message: String!): Void {
+    if (ok == false) { raise message }
+    null
+  }
+
+  """
+  Bootstrap placeholder; replaced by the first module's checks.
+  """
+  bootstrapCheck: Void @check {
+    assert(true, "unreachable")
+    null
+  }
+}
