@@ -1,0 +1,30 @@
+pub description = "Audit a Ruby project's Gemfile.lock against today's advisories"
+
+"""
+bundler-audit for one Bundler project. A pinned bundler-audit runs outside the
+project's bundle, so the project does not need it in its Gemfile.
+"""
+type BundlerAudit {
+  """
+  Project root. See the `ruby` module.
+  """
+  root: String! = "."
+
+  """
+  Custom Ruby container. See the `ruby` module.
+  """
+  base: Container
+
+  """
+  Check Gemfile.lock against the ruby-advisory-db, downloaded on every run, and
+  fail with the advisories found. The verdict changes as advisories appear.
+  """
+  audit(ws: Workspace!): Void @check @cache(policy: FunctionCachePolicy.PerSession) {
+    # PerSession stops this call replaying an old verdict; the new database
+    # path stops the exec replaying and any database in the base being reused.
+    ruby(root: root, base: base).run(ws, tool: "bundler-audit", command: [
+      "gem", "exec", "-g", "bundler-audit", "-v", "0.9.3", "bundle-audit", "check",
+      "--update", "--database", "/tmp/ruby-advisory-db-" + UUID.v7,
+    ])
+  }
+}

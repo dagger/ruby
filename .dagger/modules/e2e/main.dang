@@ -148,6 +148,26 @@ type E2e {
   }
 
   """
+  A lockfile with no gems passes, so it can never become vulnerable. The
+  fixture pins rack 2.0.1 to fail on CVE-2018-16471, fixed in 2018 and not
+  expected to be withdrawn; that lockfile triggers Dependabot alerts by design.
+  """
+  bundlerAuditCheck(ws: Workspace!): Void @check {
+    let tool = bundlerAudit(root: "project")
+    let empty = directory
+      .withNewFile("project/Gemfile", "source \"https://rubygems.org\"\n")
+      .withNewFile(
+        "project/Gemfile.lock",
+        "GEM\n  remote: https://rubygems.org/\n  specs:\n\nPLATFORMS\n  ruby\n  x86_64-linux\n\nDEPENDENCIES\n\nCHECKSUMS\n  bundler (4.0.24) sha256=16ca64e20816a0cf151a948fb141d788602996d2b4d73577b74388fe84fa98bc\n\nBUNDLED WITH\n  4.0.24\n",
+      )
+    let clean = failureOf(tool.audit(empty.asWorkspace))
+    assert(clean == "passed", "clean lockfile failed: " + clean)
+    let vulnerable = failureOf(tool.audit(ws.directory("/bundler-audit/testdata").asWorkspace))
+    assert(vulnerable.contains("CVE-2018-16471"), "vulnerable lockfile did not report its advisory: " + vulnerable)
+    null
+  }
+
+  """
   A clean locked project passes with its own .rubocop.yml and a path gem's
   inherited style.
   """

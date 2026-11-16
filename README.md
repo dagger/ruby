@@ -13,7 +13,8 @@ Modules land one pull request at a time:
 | [`minitest`](minitest) | available |
 | [`rspec`](rspec) | available |
 | [`rails`](rails) (SQLite test database) | available |
-| bundler-audit, Brakeman | planned |
+| [`bundler-audit`](bundler-audit) | available |
+| Brakeman | planned |
 
 Each module is a directory with a `dagger-module.toml` and a `main.dang`; `dagger.toml` registers it
 as a scope. End-to-end checks live in `.dagger/modules/e2e`.

@@ -32,7 +32,12 @@ is-module = true
 name = "rails"
 clients = ["./ruby"]
 
+[sdks.dang.scopes."bundler-audit"]
+is-module = true
+name = "bundler-audit"
+clients = ["./ruby"]
+
 [sdks.dang.scopes.".dagger/modules/e2e"]
 is-module = true
 name = "e2e"
-clients = ["./ruby", "./rubocop", "./minitest", "./rspec", "./rails"]
+clients = ["./ruby", "./rubocop", "./minitest", "./rspec", "./rails", "./bundler-audit"]

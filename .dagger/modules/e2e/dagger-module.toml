@@ -23,3 +23,7 @@ engineVersion = "v1.0.0-beta.25"
 [[dependencies]]
   name = "rails"
   source = "../../../rails"
+
+[[dependencies]]
+  name = "bundler-audit"
+  source = "../../../bundler-audit"
