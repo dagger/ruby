@@ -19,7 +19,15 @@ development on port 3000, answering only Rails' development hosts such as
 app's `config.ru`. No migrations run; a request that queries the database
 fails until the app's development database exists.
 
+`assets` is an explicit function, never a check: it runs
+`bin/rails assets:precompile` in production with Rails' `SECRET_KEY_BASE_DUMMY`
+and returns `public/assets`:
+
+```sh
+dagger -c 'rails | assets | export public/assets'
+```
+
 The default base has no Node, database command-line clients, credentials or
-database services; set `base` to an image with what the app needs. `root` and
-`base`, and the project requirements, are those of the [`ruby`
-module](../ruby/README.md).
+database services; set `base` to an image with what the app needs, such as Node
+for JavaScript-bundled assets. `root` and `base`, and the project requirements,
+are those of the [`ruby` module](../ruby/README.md).

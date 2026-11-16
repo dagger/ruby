@@ -116,6 +116,16 @@ type E2e {
   }
 
   """
+  Asset precompilation returns digested files.
+  """
+  railsAssetsCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/rails/testdata")
+    let compiled = rails(root: "project").assets(source.asWorkspace)
+    assert(compiled.glob("application-*.css").length == 1, "no digested stylesheet: " + compiled.glob("*").join(", "))
+    null
+  }
+
+  """
   A clean locked project passes with its own .rubocop.yml and a path gem's
   inherited style.
   """

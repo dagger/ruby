@@ -34,4 +34,17 @@ type Rails {
       .withExposedPort(3000)
       .asService(args: ["bin/rails", "server", "-b", "0.0.0.0", "-p", "3000"])
   }
+
+  """
+  Precompile assets with `bin/rails assets:precompile` in production and return
+  public/assets. Rails' dummy secret key stands in for real credentials.
+  """
+  assets(ws: Workspace!): Directory! {
+    ruby(root: root, base: base)
+      .container(ws)
+      .withEnvVariable("RAILS_ENV", "production")
+      .withEnvVariable("SECRET_KEY_BASE_DUMMY", "1")
+      .withExec(["bin/rails", "assets:precompile"])
+      .directory("public/assets")
+  }
 }
