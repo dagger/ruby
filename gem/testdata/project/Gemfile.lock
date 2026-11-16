@@ -1,0 +1,21 @@
+PATH
+  remote: .
+  specs:
+    greeter (0.1.0)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+
+PLATFORMS
+  ruby
+  x86_64-linux
+
+DEPENDENCIES
+  greeter!
+
+CHECKSUMS
+  greeter (0.1.0)
+
+BUNDLED WITH
+  4.0.20

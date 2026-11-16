@@ -39,3 +39,7 @@ engineVersion = "v1.0.0-beta.25"
 [[dependencies]]
   name = "yard"
   source = "../../../yard"
+
+[[dependencies]]
+  name = "gem"
+  source = "../../../gem"

@@ -1,0 +1,51 @@
+pub description = "Build a locked Ruby project's gem from its own gemspec"
+
+"""
+`gem build` for one Bundler project with a single gemspec at its root.
+"""
+type Gem {
+  """
+  Project root. See the `ruby` module.
+  """
+  root: String! = "."
+
+  """
+  Custom Ruby container. See the `ruby` module.
+  """
+  base: Container
+
+  """
+  Build the gem from the one .gemspec in the project root with `gem build`
+  and return the .gem file. A gem without files fails.
+  """
+  build(ws: Workspace!): File! {
+    let env = ruby(root: root, base: base)
+    let ctr = env.container(ws)
+    let specs = ctr.directory(".").glob("*.gemspec")
+    if (specs.length != 1) {
+      raise "expected exactly one .gemspec in " + env.path + ", found " + `${specs.length}`
+    }
+    let ran = ctr.withExec(["gem", "build", specs[0]!, "--output", "/tmp/dagger-built.gem"], expect: ANY)
+    if (ran.exitCode != 0) {
+      raise "gem build failed in " + env.path + ":\n" + ran.stdout + ran.stderr
+    }
+    # The name comes from the built gem, not from stdout, which the gemspec can write to.
+    let named = ran.withExec([
+      "ruby", "-e",
+      "require 'rubygems/package'; spec = Gem::Package.new(ARGV[0]).spec; abort 'spec.files is empty; the workspace has no .git, so list files with Dir[...] globs instead of git ls-files' if spec.files.empty?; print spec.file_name",
+      "/tmp/dagger-built.gem",
+    ], expect: ANY)
+    if (named.exitCode != 0) {
+      raise "gem build failed in " + env.path + ": " + named.stderr
+    }
+    ran.file("/tmp/dagger-built.gem").withName(named.stdout)
+  }
+
+  """
+  Fail when the gem does not build.
+  """
+  gemspec(ws: Workspace!): Void @check {
+    build(ws).sync
+    null
+  }
+}

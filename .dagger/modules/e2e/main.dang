@@ -229,6 +229,29 @@ type E2e {
   }
 
   """
+  The gemspec builds greeter-0.1.0.gem with its lib files; a gemspec listing
+  a missing file, or no files, fails with an actionable error.
+  """
+  gemBuildCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/gem/testdata")
+    let tool = gem(root: "project")
+    let built = tool.build(source.asWorkspace)
+    assert(built.name == "greeter-0.1.0.gem", "unexpected gem file: " + built.name)
+    let files = customBase.withFile("/greeter.gem", built).withExec(["gem", "spec", "/greeter.gem", "files"]).stdout
+    assert(files.contains("lib/greeter.rb"), "gem lacks its lib file: " + files)
+    let gemspec = source.file("project/greeter.gemspec").contents.replace(
+      old: "Dir[\"lib/**/*.rb\"]",
+      new: "[\"lib/greeter.rb\", \"lib/missing.rb\"]",
+    )
+    let missing = failureOf(tool.gemspec(source.withNewFile("project/greeter.gemspec", gemspec).asWorkspace))
+    assert(missing.contains("[\"lib/missing.rb\"] are not files"), "missing file was not reported: " + missing)
+    let none = source.file("project/greeter.gemspec").contents.replace(old: "Dir[\"lib/**/*.rb\"]", new: "[]")
+    let empty = failureOf(tool.gemspec(source.withNewFile("project/greeter.gemspec", none).asWorkspace))
+    assert(empty.contains("spec.files is empty"), "an empty gem was not rejected: " + empty)
+    null
+  }
+
+  """
   A clean locked project passes with its own .rubocop.yml and a path gem's
   inherited style.
   """
