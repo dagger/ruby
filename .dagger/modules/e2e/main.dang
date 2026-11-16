@@ -70,6 +70,23 @@ type E2e {
   }
 
   """
+  A passing suite passes; a failing spec fails with RSpec's output.
+  """
+  rspecCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/rspec/testdata")
+    let tool = rspec(root: "project")
+    let result = failureOf(tool.test(source.asWorkspace))
+    assert(result == "passed", "passing suite failed: " + result)
+    let broken = source.withNewFile(
+      "project/spec/broken_spec.rb",
+      "RSpec.describe \"broken\" do\n  it \"fails\" do\n    expect(1).to eq(2), \"rspec failure sentinel\"\n  end\nend\n",
+    )
+    let failed = failureOf(tool.test(broken.asWorkspace))
+    assert(failed.contains("rspec failure sentinel"), "failing spec did not fail with its output: " + failed)
+    null
+  }
+
+  """
   A clean locked project passes with its own .rubocop.yml and a path gem's
   inherited style.
   """

@@ -1,0 +1,24 @@
+pub description = "Run a locked Ruby project's RSpec suite"
+
+"""
+RSpec for one Bundler project, run as `bundle exec rspec` with the gems its
+Gemfile.lock pins and the options its .rspec file sets.
+"""
+type Rspec {
+  """
+  Project root. See the `ruby` module.
+  """
+  root: String! = "."
+
+  """
+  Custom Ruby container. See the `ruby` module.
+  """
+  base: Container
+
+  """
+  Run `bundle exec rspec` in the project root and fail with its output.
+  """
+  test(ws: Workspace!): Void @check {
+    ruby(root: root, base: base).run(ws, tool: "RSpec", command: ["bundle", "exec", "rspec"])
+  }
+}

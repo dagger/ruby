@@ -19,11 +19,6 @@ type Minitest {
   Run `bundle exec rake test` in the project root and fail with its output.
   """
   test(ws: Workspace!): Void @check {
-    let env = ruby(root: root, base: base)
-    let ran = env.container(ws).withExec(["bundle", "exec", "rake", "test"], expect: ANY)
-    if (ran.exitCode != 0) {
-      raise "Minitest failed in " + env.path + ":\n" + ran.stdout + ran.stderr
-    }
-    null
+    ruby(root: root, base: base).run(ws, tool: "Minitest", command: ["bundle", "exec", "rake", "test"])
   }
 }

@@ -11,7 +11,8 @@ Modules land one pull request at a time:
 | [`ruby`](ruby) (shared Bundler environment) | available |
 | [`rubocop`](rubocop) | available |
 | [`minitest`](minitest) | available |
-| RSpec, Rails, bundler-audit, Brakeman | planned |
+| [`rspec`](rspec) | available |
+| Rails, bundler-audit, Brakeman | planned |
 
 Each module is a directory with a `dagger-module.toml` and a `main.dang`; `dagger.toml` registers it
 as a scope. End-to-end checks live in `.dagger/modules/e2e`.
