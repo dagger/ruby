@@ -1,0 +1,27 @@
+pub description = "Scan a Rails app for security issues with Brakeman"
+
+"""
+Brakeman for one Rails app. A pinned Brakeman runs outside the project's
+bundle, so the app does not need it in its Gemfile.
+"""
+type Brakeman {
+  """
+  Project root. See the `ruby` module.
+  """
+  root: String! = "."
+
+  """
+  Custom Ruby container. See the `ruby` module.
+  """
+  base: Container
+
+  """
+  Scan the app with Brakeman, which reads the app's config/brakeman.yml and
+  config/brakeman.ignore, and fail on any non-ignored warning or scan error.
+  """
+  scan(ws: Workspace!): Void @check {
+    ruby(root: root, base: base).run(ws, tool: "Brakeman", command: [
+      "gem", "exec", "-g", "brakeman", "-v", "8.1.0", "brakeman", "-q",
+    ])
+  }
+}

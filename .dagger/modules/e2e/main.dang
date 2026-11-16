@@ -168,6 +168,32 @@ type E2e {
   }
 
   """
+  The Rails fixture scans clean; a controller evaluating a parameter fails
+  with Brakeman's Dangerous Eval warning, which the app's config/brakeman.yml
+  can skip.
+  """
+  brakemanCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/rails/testdata")
+    let tool = brakeman(root: "project")
+    let clean = failureOf(tool.scan(source.asWorkspace))
+    assert(clean == "passed", "clean app failed: " + clean)
+    let evil = source.withNewFile(
+      "project/app/controllers/evil_controller.rb",
+      "class EvilController < ActionController::Base\n  def run\n    eval(params[:code])\n  end\nend\n",
+    )
+    let failed = failureOf(tool.scan(evil.asWorkspace))
+    assert(failed.contains("Dangerous Eval"), "eval of a parameter was not reported: " + failed)
+    let configured = failureOf(
+      tool.scan(evil.withNewFile("project/config/brakeman.yml", "---\n:skip_checks:\n- CheckEvaluation\n").asWorkspace),
+    )
+    assert(
+      configured.contains("Cross-Site Request Forgery") and configured.contains("Dangerous Eval") == false,
+      "config/brakeman.yml was not applied: " + configured,
+    )
+    null
+  }
+
+  """
   A clean locked project passes with its own .rubocop.yml and a path gem's
   inherited style.
   """

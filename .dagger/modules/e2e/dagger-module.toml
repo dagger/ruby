@@ -27,3 +27,7 @@ engineVersion = "v1.0.0-beta.25"
 [[dependencies]]
   name = "bundler-audit"
   source = "../../../bundler-audit"
+
+[[dependencies]]
+  name = "brakeman"
+  source = "../../../brakeman"

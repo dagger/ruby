@@ -1,0 +1,9 @@
+name = "brakeman"
+engineVersion = "v1.0.0-beta.25"
+
+[runtime]
+  source = "dang"
+
+[[dependencies]]
+  name = "ruby"
+  source = "../ruby"
