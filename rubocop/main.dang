@@ -1,0 +1,71 @@
+pub description = "Lint a locked Ruby project with its own RuboCop and configuration"
+
+"""
+RuboCop for one Bundler project, run with the RuboCop version its Gemfile.lock
+pins and the configuration it carries, such as .rubocop.yml.
+"""
+type Rubocop {
+  """
+  Project root holding Gemfile and Gemfile.lock, relative to the workspace root.
+  """
+  root: String! = "."
+
+  """
+  Custom container with Ruby and Bundler. Defaults to the official ruby:4.0 image.
+  """
+  base: Container
+
+  let path: String! {
+    if (root.hasPrefix("/") or root.split("/").contains("..")) {
+      raise "rubocop root must be workspace-relative, without '..': " + root
+    }
+    let normalized = root.split("/").reject { part => part == "" or part == "." }.join("/")
+    if (normalized == "") { "." } else { normalized }
+  }
+
+  """
+  The workspace at /src with the project's locked gems installed, including
+  development and test groups, and the project root as working directory.
+  """
+  container(ws: Workspace!): Container! {
+    # The whole workspace, not only the root, so path gems and configuration
+    # inherited from outside the project resolve as they do locally.
+    let source = ws.directory("/", exclude: [".git"], gitignore: true)
+    let project = source.directory(path)
+    if (project.exists("Gemfile") == false) {
+      raise "no Gemfile in " + path + ": set root to the directory holding Gemfile and Gemfile.lock"
+    }
+    if (project.exists("Gemfile.lock") == false) {
+      raise "no Gemfile.lock in " + path + ": run `bundle lock` there and commit Gemfile.lock"
+    }
+    let installed = (base ?? Dagger.container.from("ruby:4.0@sha256:342dd3092e25f9d16fc2a5c48c5bb2d9a93717d4f900d005d6e088e2c45d3d19"))
+      # A project's .bundle/config outranks the environment, so point Bundler at
+      # an empty app config: production settings must not drop the development
+      # group RuboCop lives in, nor unfreeze the lockfile.
+      .withEnvVariable("BUNDLE_APP_CONFIG", "/dagger-rubocop/bundle-config")
+      .withEnvVariable("BUNDLE_FROZEN", "true")
+      .withEnvVariable("BUNDLE_WITHOUT", "")
+      .withDirectory("/src", source)
+      .withWorkdir("/src/" + path)
+      .withExec(["bundle", "install"], expect: ANY)
+    if (installed.exitCode != 0) {
+      let output = installed.stdout + installed.stderr
+      if (output.contains("frozen")) {
+        raise "Gemfile.lock in " + path + " does not match Gemfile: run `bundle lock` there and commit Gemfile.lock\n" + output
+      }
+      raise "bundle install failed in " + path + ":\n" + output
+    }
+    installed
+  }
+
+  """
+  Run `bundle exec rubocop` in the project root and fail with its offenses.
+  """
+  lint(ws: Workspace!): Void @check {
+    let ran = container(ws).withExec(["bundle", "exec", "rubocop"], expect: ANY)
+    if (ran.exitCode != 0) {
+      raise "RuboCop failed in " + path + ":\n" + ran.stdout + ran.stderr
+    }
+    null
+  }
+}

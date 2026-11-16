@@ -7,11 +7,94 @@ type E2e {
     null
   }
 
+  # A check called through a dependency comes back as a Check that has not run.
+  let failureOf(check: Check!): String! {
+    if (check.pass) { "passed" } else { check.error.message ?? "check failed" }
+  }
+
+  let errorOf(tool: Rubocop!, ws: Workspace!): String! {
+    { tool.container(ws).sync; "passed" } rescue {
+      err: Error => err.message
+    }
+  }
+
+  let testdata(ws: Workspace!): Directory! {
+    ws.directory("/rubocop/testdata")
+  }
+
+  # The official image redirects BUNDLE_APP_CONFIG; without it, Bundler reads
+  # a project's .bundle/config.
+  let customBase: Container! {
+    container
+      .from("ruby:4.0@sha256:342dd3092e25f9d16fc2a5c48c5bb2d9a93717d4f900d005d6e088e2c45d3d19")
+      .withoutEnvVariable("BUNDLE_APP_CONFIG")
+      .withNewFile("/custom-base", "custom")
+  }
+
   """
-  Bootstrap placeholder; replaced by the first module's checks.
+  Roots are workspace-relative, and a custom base replaces the default image.
   """
-  bootstrapCheck: Void @check {
-    assert(true, "unreachable")
+  configurationCheck(ws: Workspace!): Void @check {
+    let source = testdata(ws).asWorkspace
+    let escaped = errorOf(rubocop(root: "../project"), source)
+    assert(escaped.contains("workspace-relative"), "accepted a root outside the workspace: " + escaped)
+    let absolute = errorOf(rubocop(root: "/project"), source)
+    assert(absolute.contains("workspace-relative"), "accepted an absolute root: " + absolute)
+    let marker = rubocop(root: "./project/", base: customBase).container(source).file("/custom-base").contents
+    assert(marker == "custom", "custom base was not used")
+    null
+  }
+
+  """
+  A clean locked project passes with its own .rubocop.yml, a path gem's inherited
+  style, and development gems that a project .bundle/config tries to exclude.
+  """
+  lintPassCheck(ws: Workspace!): Void @check {
+    let source = testdata(ws).withNewFile("project/.bundle/config", "---\nBUNDLE_WITHOUT: \"development\"\n").asWorkspace
+    let tool = rubocop(root: "project", base: customBase)
+    let result = failureOf(tool.lint(source))
+    assert(result == "passed", "clean project failed: " + result)
+    let cops = tool
+      .container(source)
+      .withExec(["bundle", "exec", "rubocop", "--show-cops", "Style/StringLiterals,Style/FrozenStringLiteralComment"])
+      .stdout
+    assert(cops.contains("EnforcedStyle: double_quotes"), "path gem configuration was not inherited: " + cops)
+    assert(cops.contains("Enabled: false"), "project .rubocop.yml was not used: " + cops)
+    null
+  }
+
+  """
+  Offenses fail with RuboCop's output; missing or stale lockfiles say how to fix them.
+  """
+  lintFailureCheck(ws: Workspace!): Void @check {
+    let source = testdata(ws)
+    let tool = rubocop(root: "project")
+    let offense = failureOf(
+      tool.lint(source.withNewFile("project/lib/bad.rb", "# Bad.\nmodule Bad\n  NAME = 'single'\nend\n").asWorkspace),
+    )
+    assert(offense.contains("Style/StringLiterals"), "offense did not fail with RuboCop output: " + offense)
+    let stale = errorOf(
+      tool,
+      source.withNewFile("project/Gemfile", source.file("project/Gemfile").contents + "gem \"rake\"\n").asWorkspace,
+    )
+    assert(stale.contains("run `bundle lock`"), "stale lockfile was not explained: " + stale)
+    let unlocked = errorOf(tool, source.withoutFile("project/Gemfile.lock").asWorkspace)
+    assert(unlocked.contains("no Gemfile.lock in project"), "missing lockfile was not explained: " + unlocked)
+    let missing = errorOf(rubocop, source.asWorkspace)
+    assert(missing.contains("no Gemfile in ."), "missing Gemfile was not explained: " + missing)
+    null
+  }
+
+  """
+  Only the selected root is linted, wherever it sits in the workspace.
+  """
+  sourcePolicyCheck(ws: Workspace!): Void @check {
+    let source = directory
+      .withDirectory("apps", testdata(ws))
+      .withNewFile("apps/stray.rb", "x = 'outside the selected root'\n")
+      .asWorkspace
+    let result = failureOf(rubocop(root: "apps/project").lint(source))
+    assert(result == "passed", "selected root failed: " + result)
     null
   }
 }

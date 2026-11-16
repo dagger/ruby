@@ -1,0 +1,9 @@
+inherit_gem:
+  house_style: config/default.yml
+
+AllCops:
+  NewCops: enable
+  SuggestExtensions: false
+
+Style/FrozenStringLiteralComment:
+  Enabled: false

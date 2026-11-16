@@ -1,9 +1,0 @@
-# Bootstrap only: replaced by the named end-to-end checks in the first module pull request.
-name: ci
-on: [pull_request]
-jobs:
-  bootstrap:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: test -f dagger.toml
