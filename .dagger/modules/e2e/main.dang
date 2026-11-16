@@ -64,7 +64,8 @@ type E2e {
       "project/test/broken_test.rb",
       "require \"minitest/autorun\"\n\nclass BrokenTest < Minitest::Test\n  def test_broken\n    flunk \"minitest failure sentinel\"\n  end\nend\n",
     )
-    let failed = failureOf(tool.test(broken.asWorkspace))
+    # Untraced, so this expected failure stays out of Dagger's test summary.
+    let failed = failureOf(minitest(root: "project", tracing: false).test(broken.asWorkspace))
     assert(failed.contains("minitest failure sentinel"), "failing test did not fail with its output: " + failed)
     null
   }
@@ -276,6 +277,52 @@ type E2e {
       err: Error => err.message
     }
     assert(unreachable.contains("gem push to http://127.0.0.1:9 failed"), "unreachable host was not reported: " + unreachable)
+    null
+  }
+
+  let countOf(list: [String!]!, line: String!): Int! {
+    list.filter { other => other == line }.length
+  }
+
+  # Dagger sets the OTLP endpoint for every exec, so a RUBYOPT preload in the
+  # base points the plugin elsewhere; the UUID keeps the runs from replaying.
+  let redirect(endpoint: String!): Container! {
+    customBase
+      .withNewFile("/redirect.rb", "# " + UUID.v7 + "\nENV[\"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT\"] = \"" + endpoint + "\"\n")
+      .withEnvVariable("RUBYOPT", "-r/redirect.rb")
+  }
+
+  """
+  With tracing, Minitest sends a session span and a span per test with its
+  outcome; a collector that cannot be reached leaves the verdict unchanged.
+  """
+  minitestOtelCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/minitest/testdata")
+    let broken = source.withNewFile(
+      "project/test/broken_test.rb",
+      "require \"minitest/autorun\"\n\nclass BrokenTest < Minitest::Test\n  def test_broken\n    flunk \"minitest failure sentinel\"\n  end\nend\n",
+    )
+    let receiver = customBase
+      .withFile("/receiver.rb", currentModule.source.file("mock-otlp-receiver.rb"))
+      .withExposedPort(4318)
+      .asService(args: ["ruby", "/receiver.rb"])
+    receiver.start
+    let host = receiver.endpoint(scheme: "http")
+    let traced = minitest(root: "project", base: redirect(host + "/v1/traces"))
+    assert(failureOf(traced.test(source.asWorkspace)) == "passed", "traced passing suite failed")
+    assert(failureOf(traced.test(broken.asWorkspace)).contains("minitest failure sentinel"), "traced failing suite passed")
+    let spans = customBase.withExec(["curl", "-fsS", host + "/spans?run=" + UUID.v7]).stdout.split("\n")
+    # Test order within a run is random, so compare counts, not positions.
+    let expected = [
+      "minitest success", "AdderTest#test_add pass",
+      "minitest failure", "AdderTest#test_add pass", "BrokenTest#test_broken fail",
+    ]
+    assert(
+      spans.length == expected.length and expected.all { line => countOf(spans, line) == countOf(expected, line) },
+      "receiver did not get exactly the expected spans: " + spans.join(", "),
+    )
+    let unreachable = minitest(root: "project", base: redirect("http://127.0.0.1:9/v1/traces"))
+    assert(failureOf(unreachable.test(source.asWorkspace)) == "passed", "an unreachable collector failed the tests")
     null
   }
 

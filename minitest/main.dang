@@ -16,9 +16,29 @@ type Minitest {
   base: Container
 
   """
+  Whether to load the bundled OpenTelemetry plugin, which sends a session span
+  and one span per test to the trace Dagger provides. An export failure only
+  warns; it never changes the verdict.
+  """
+  tracing: Boolean! = true
+
+  """
   Run `bundle exec rake test` in the project root and fail with its output.
   """
   test(ws: Workspace!): Void @check {
-    ruby(root: root, base: base).run(ws, tool: "Minitest", command: ["bundle", "exec", "rake", "test"])
+    let env = ruby(root: root, base: base)
+    let installed = env.container(ws)
+    # Added after the bundle is installed and loaded through RUBYOPT, so the
+    # project's Gemfile and lock are never touched.
+    let ctr = if (tracing) {
+      installed
+        .withDirectory("/opt/dagger_minitest_otel", currentModule.source.directory("dagger_minitest_otel"))
+        .withEnvVariable("RUBYOPT", "${RUBYOPT} -I/opt/dagger_minitest_otel -rdagger_minitest_otel", expand: true)
+    } else { installed }
+    let ran = ctr.withExec(["bundle", "exec", "rake", "test"], expect: ANY)
+    if (ran.exitCode != 0) {
+      raise "Minitest failed in " + env.path + ":\n" + ran.stdout + ran.stderr
+    }
+    null
   }
 }
