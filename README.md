@@ -14,7 +14,7 @@ and [dagger/java](https://github.com/dagger/java). They require Dagger v1.0.0-be
 | [`brakeman`](brakeman) | Rails security scan |
 | [`sorbet`](sorbet) | Type checking with `srb tc` |
 | [`yard`](yard) | Documentation warnings and HTML build |
-| [`gem`](gem) | Gem build from the project's gemspec |
+| [`gem`](gem) | Gem build from the project's gemspec; explicit publish |
 | [`ruby`](ruby) | Shared Bundler environment; install a tool module instead |
 
 Each module is a directory with a `dagger-module.toml` and a `main.dang`; `dagger.toml` registers it

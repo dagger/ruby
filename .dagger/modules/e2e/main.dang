@@ -252,6 +252,34 @@ type E2e {
   }
 
   """
+  publish pushes the built gem to a disposable mock server, never
+  rubygems.org, which accepts only POST /api/v1/gems with a body and the right
+  key; a wrong key or an unreachable host fails without revealing either key.
+  """
+  gemPublishCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/gem/testdata").asWorkspace
+    let tool = gem(root: "project")
+    let mock = customBase
+      .withFile("/mock.rb", currentModule.source.file("mock-gem-server.rb"))
+      .withExposedPort(8080)
+      .asService(args: ["ruby", "/mock.rb"])
+    mock.start
+    let host = mock.endpoint(scheme: "http")
+    tool.publish(source, host: host, apiKey: setSecret("gem-publish-api-key", "dummy-key"))
+    let wrongKey = setSecret("gem-publish-wrong-key", "wrong-key")
+    let rejected = { tool.publish(source, host: host, apiKey: wrongKey); "passed" } rescue {
+      err: Error => err.message
+    }
+    assert(rejected.contains("gem push to " + host + " failed"), "a wrong key was accepted: " + rejected)
+    assert(rejected.contains("wrong-key") == false and rejected.contains("dummy-key") == false, "a key leaked into the error")
+    let unreachable = { tool.publish(source, host: "http://127.0.0.1:9", apiKey: wrongKey); "passed" } rescue {
+      err: Error => err.message
+    }
+    assert(unreachable.contains("gem push to http://127.0.0.1:9 failed"), "unreachable host was not reported: " + unreachable)
+    null
+  }
+
+  """
   A clean locked project passes with its own .rubocop.yml and a path gem's
   inherited style.
   """

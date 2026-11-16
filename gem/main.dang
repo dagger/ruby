@@ -42,6 +42,25 @@ type Gem {
   }
 
   """
+  Build the gem and push it with `gem push` to `host`, such as
+  https://rubygems.org, with `apiKey` as GEM_HOST_API_KEY. An explicit action:
+  never a check, never cached, and with no default host.
+  """
+  publish(ws: Workspace!, host: String!, apiKey: Secret!): Void @cache(policy: FunctionCachePolicy.Never) {
+    let pushed = ruby(root: root, base: base)
+      .container(ws)
+      .withFile("/tmp/dagger-push.gem", build(ws))
+      .withSecretVariable("GEM_HOST_API_KEY", apiKey)
+      # @cache(Never) stops the call replaying; the UUID stops the exec replaying.
+      .withEnvVariable("DAGGER_GEM_PUSH", UUID.v7)
+      .withExec(["gem", "push", "/tmp/dagger-push.gem", "--host", host], expect: ANY)
+    if (pushed.exitCode != 0) {
+      raise "gem push to " + host + " failed:\n" + pushed.stdout + pushed.stderr
+    }
+    null
+  }
+
+  """
   Fail when the gem does not build.
   """
   gemspec(ws: Workspace!): Void @check {
