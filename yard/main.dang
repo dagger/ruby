@@ -1,0 +1,42 @@
+pub description = "Check and build a locked Ruby project's YARD documentation"
+
+"""
+YARD for one Bundler project, run with the YARD its Gemfile.lock pins and its
+own .yardopts.
+"""
+type Yard {
+  """
+  Project root. See the `ruby` module.
+  """
+  root: String! = "."
+
+  """
+  Custom Ruby container. See the `ruby` module.
+  """
+  base: Container
+
+  """
+  Generate the HTML documentation, failing on any YARD warning such as an
+  @param naming no argument, and return it.
+  """
+  build(ws: Workspace!): Directory! {
+    let env = ruby(root: root, base: base)
+    # --verbose overrides a --quiet in .yardopts, which would hide warnings
+    # from --fail-on-warning.
+    let ran = env
+      .container(ws)
+      .withExec(["bundle", "exec", "yard", "doc", "--fail-on-warning", "--verbose", "--output-dir", "/yard-doc"], expect: ANY)
+    if (ran.exitCode != 0) {
+      raise "YARD failed in " + env.path + ":\n" + ran.stdout + ran.stderr
+    }
+    ran.directory("/yard-doc")
+  }
+
+  """
+  Fail on any YARD warning.
+  """
+  docs(ws: Workspace!): Void @check {
+    build(ws).sync
+    null
+  }
+}

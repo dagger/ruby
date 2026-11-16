@@ -35,3 +35,7 @@ engineVersion = "v1.0.0-beta.25"
 [[dependencies]]
   name = "sorbet"
   source = "../../../sorbet"
+
+[[dependencies]]
+  name = "yard"
+  source = "../../../yard"

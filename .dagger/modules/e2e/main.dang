@@ -208,6 +208,27 @@ type E2e {
   }
 
   """
+  Documented code passes and builds; an @param naming no argument fails with
+  YARD's warning, even when the project's .yardopts asks for --quiet.
+  """
+  docsCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/yard/testdata")
+    let tool = yard(root: "project")
+    let result = failureOf(tool.docs(source.asWorkspace))
+    assert(result == "passed", "documented project failed: " + result)
+    assert(tool.build(source.asWorkspace).glob("Greeting.html").length == 1, "build did not document Greeting")
+    let broken = source.withNewFile(
+      "project/lib/broken.rb",
+      "# Broken docs.\nmodule Broken\n  # @param missing [String] not an argument\n  def self.run(value) = value\nend\n",
+    )
+    let failed = failureOf(tool.docs(broken.asWorkspace))
+    assert(failed.contains("unknown parameter name: missing"), "YARD warning was not reported: " + failed)
+    let quiet = failureOf(tool.docs(broken.withNewFile("project/.yardopts", "--quiet\n").asWorkspace))
+    assert(quiet.contains("unknown parameter name: missing"), "a quiet .yardopts hid the warning: " + quiet)
+    null
+  }
+
+  """
   A clean locked project passes with its own .rubocop.yml and a path gem's
   inherited style.
   """
