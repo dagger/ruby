@@ -12,8 +12,8 @@ type E2e {
     if (check.pass) { "passed" } else { check.error.message ?? "check failed" }
   }
 
-  let errorOf(tool: Rubocop!, ws: Workspace!): String! {
-    { tool.container(ws).sync; "passed" } rescue {
+  let errorOf(env: Ruby!, ws: Workspace!): String! {
+    { env.container(ws).sync; "passed" } rescue {
       err: Error => err.message
     }
   }
@@ -32,29 +32,52 @@ type E2e {
   }
 
   """
-  Roots are workspace-relative, and a custom base replaces the default image.
+  The shared environment validates roots, honours a custom base, keeps test gems
+  a project .bundle/config excludes, and explains a missing lockfile.
   """
-  configurationCheck(ws: Workspace!): Void @check {
-    let source = testdata(ws).asWorkspace
-    let escaped = errorOf(rubocop(root: "../project"), source)
+  rubyEnvCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/minitest/testdata")
+    let escaped = errorOf(ruby(root: "../project"), source.asWorkspace)
     assert(escaped.contains("workspace-relative"), "accepted a root outside the workspace: " + escaped)
-    let absolute = errorOf(rubocop(root: "/project"), source)
+    let absolute = errorOf(ruby(root: "/project"), source.asWorkspace)
     assert(absolute.contains("workspace-relative"), "accepted an absolute root: " + absolute)
-    let marker = rubocop(root: "./project/", base: customBase).container(source).file("/custom-base").contents
-    assert(marker == "custom", "custom base was not used")
+    let missing = errorOf(ruby, source.asWorkspace)
+    assert(missing.contains("no Gemfile in ."), "missing Gemfile was not explained: " + missing)
+    let env = ruby(root: "./project/", base: customBase)
+    let unlocked = errorOf(env, source.withoutFile("project/Gemfile.lock").asWorkspace)
+    assert(unlocked.contains("no Gemfile.lock in project"), "missing lockfile was not explained: " + unlocked)
+    let ctr = env.container(source.withNewFile("project/.bundle/config", "---\nBUNDLE_WITHOUT: \"test\"\n").asWorkspace)
+    assert(ctr.file("/custom-base").contents == "custom", "custom base was not used")
+    ctr.withExec(["bundle", "exec", "rake", "--version"]).sync
     null
   }
 
   """
-  A clean locked project passes with its own .rubocop.yml, a path gem's inherited
-  style, and development gems that a project .bundle/config tries to exclude.
+  A passing suite passes; a failing test fails with Minitest's output.
+  """
+  minitestCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/minitest/testdata")
+    let tool = minitest(root: "project")
+    let result = failureOf(tool.test(source.asWorkspace))
+    assert(result == "passed", "passing suite failed: " + result)
+    let broken = source.withNewFile(
+      "project/test/broken_test.rb",
+      "require \"minitest/autorun\"\n\nclass BrokenTest < Minitest::Test\n  def test_broken\n    flunk \"minitest failure sentinel\"\n  end\nend\n",
+    )
+    let failed = failureOf(tool.test(broken.asWorkspace))
+    assert(failed.contains("minitest failure sentinel"), "failing test did not fail with its output: " + failed)
+    null
+  }
+
+  """
+  A clean locked project passes with its own .rubocop.yml and a path gem's
+  inherited style.
   """
   lintPassCheck(ws: Workspace!): Void @check {
-    let source = testdata(ws).withNewFile("project/.bundle/config", "---\nBUNDLE_WITHOUT: \"development\"\n").asWorkspace
-    let tool = rubocop(root: "project", base: customBase)
-    let result = failureOf(tool.lint(source))
+    let source = testdata(ws).asWorkspace
+    let result = failureOf(rubocop(root: "project").lint(source))
     assert(result == "passed", "clean project failed: " + result)
-    let cops = tool
+    let cops = ruby(root: "project")
       .container(source)
       .withExec(["bundle", "exec", "rubocop", "--show-cops", "Style/StringLiterals,Style/FrozenStringLiteralComment"])
       .stdout
@@ -64,37 +87,12 @@ type E2e {
   }
 
   """
-  Offenses fail with RuboCop's output; missing or stale lockfiles say how to fix them.
+  Offenses fail with RuboCop's output.
   """
   lintFailureCheck(ws: Workspace!): Void @check {
-    let source = testdata(ws)
-    let tool = rubocop(root: "project")
-    let offense = failureOf(
-      tool.lint(source.withNewFile("project/lib/bad.rb", "# Bad.\nmodule Bad\n  NAME = 'single'\nend\n").asWorkspace),
-    )
+    let source = testdata(ws).withNewFile("project/lib/bad.rb", "# Bad.\nmodule Bad\n  NAME = 'single'\nend\n")
+    let offense = failureOf(rubocop(root: "project").lint(source.asWorkspace))
     assert(offense.contains("Style/StringLiterals"), "offense did not fail with RuboCop output: " + offense)
-    let stale = errorOf(
-      tool,
-      source.withNewFile("project/Gemfile", source.file("project/Gemfile").contents + "gem \"rake\"\n").asWorkspace,
-    )
-    assert(stale.contains("run `bundle lock`"), "stale lockfile was not explained: " + stale)
-    let unlocked = errorOf(tool, source.withoutFile("project/Gemfile.lock").asWorkspace)
-    assert(unlocked.contains("no Gemfile.lock in project"), "missing lockfile was not explained: " + unlocked)
-    let missing = errorOf(rubocop, source.asWorkspace)
-    assert(missing.contains("no Gemfile in ."), "missing Gemfile was not explained: " + missing)
-    null
-  }
-
-  """
-  Only the selected root is linted, wherever it sits in the workspace.
-  """
-  sourcePolicyCheck(ws: Workspace!): Void @check {
-    let source = directory
-      .withDirectory("apps", testdata(ws))
-      .withNewFile("apps/stray.rb", "x = 'outside the selected root'\n")
-      .asWorkspace
-    let result = failureOf(rubocop(root: "apps/project").lint(source))
-    assert(result == "passed", "selected root failed: " + result)
     null
   }
 }

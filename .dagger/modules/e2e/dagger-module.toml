@@ -7,3 +7,11 @@ engineVersion = "v1.0.0-beta.25"
 [[dependencies]]
   name = "rubocop"
   source = "../../../rubocop"
+
+[[dependencies]]
+  name = "ruby"
+  source = "../../../ruby"
+
+[[dependencies]]
+  name = "minitest"
+  source = "../../../minitest"

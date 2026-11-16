@@ -8,11 +8,21 @@ main = true
 [sdks.dang]
 module = "dang-sdk"
 
+[sdks.dang.scopes."ruby"]
+is-module = true
+name = "ruby"
+
 [sdks.dang.scopes."rubocop"]
 is-module = true
 name = "rubocop"
+clients = ["./ruby"]
+
+[sdks.dang.scopes."minitest"]
+is-module = true
+name = "minitest"
+clients = ["./ruby"]
 
 [sdks.dang.scopes.".dagger/modules/e2e"]
 is-module = true
 name = "e2e"
-clients = ["./rubocop"]
+clients = ["./ruby", "./rubocop", "./minitest"]
