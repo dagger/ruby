@@ -12,6 +12,7 @@ and [dagger/java](https://github.com/dagger/java). They require Dagger v1.0.0-be
 | [`rails`](rails) | Tests on SQLite, development server, asset precompilation |
 | [`bundler-audit`](bundler-audit) | Gemfile.lock advisory audit |
 | [`brakeman`](brakeman) | Rails security scan |
+| [`sorbet`](sorbet) | Type checking with `srb tc` |
 | [`ruby`](ruby) | Shared Bundler environment; install a tool module instead |
 
 Each module is a directory with a `dagger-module.toml` and a `main.dang`; `dagger.toml` registers it

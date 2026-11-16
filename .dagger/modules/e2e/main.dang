@@ -194,6 +194,20 @@ type E2e {
   }
 
   """
+  A typed project passes; a call with the wrong arity fails with Sorbet's error.
+  """
+  typecheckCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/sorbet/testdata")
+    let tool = sorbet(root: "project")
+    let result = failureOf(tool.typecheck(source.asWorkspace))
+    assert(result == "passed", "typed project failed: " + result)
+    let broken = source.withNewFile("project/lib/broken.rb", "# typed: true\nGreeting.hello(1, 2)\n")
+    let failed = failureOf(tool.typecheck(broken.asWorkspace))
+    assert(failed.contains("Too many arguments provided"), "type error was not reported: " + failed)
+    null
+  }
+
+  """
   A clean locked project passes with its own .rubocop.yml and a path gem's
   inherited style.
   """

@@ -1,0 +1,24 @@
+pub description = "Type-check a locked Ruby project with its own Sorbet"
+
+"""
+Sorbet for one Bundler project, run as `bundle exec srb tc` with the Sorbet its
+Gemfile.lock pins and its own sorbet/config.
+"""
+type Sorbet {
+  """
+  Project root. See the `ruby` module.
+  """
+  root: String! = "."
+
+  """
+  Custom Ruby container. See the `ruby` module.
+  """
+  base: Container
+
+  """
+  Run `bundle exec srb tc` in the project root and fail with its errors.
+  """
+  typecheck(ws: Workspace!): Void @check {
+    ruby(root: root, base: base).run(ws, tool: "Sorbet", command: ["bundle", "exec", "srb", "tc"])
+  }
+}
