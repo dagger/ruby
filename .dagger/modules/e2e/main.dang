@@ -126,6 +126,28 @@ type E2e {
   }
 
   """
+  The formatter fixes only layout, in only the badly laid-out file, and is
+  idempotent. Trailing spaces in a multiline string literal are removed, as
+  documented; a heredoc keeps them.
+  """
+  rubocopFormatCheck(ws: Workspace!): Void @check {
+    let source = testdata(ws).withNewFile(
+      "project/lib/messy.rb",
+      "# Messy.\nmodule Messy\n    VALUE = 'one'   \n  TEXT = <<~DOC\n    kept  \n  DOC\n  MULTI = \"a  \nb\"\nend\n",
+    )
+    let tool = rubocop(root: "project")
+    let changes = tool.format(source.asWorkspace)
+    assert(changes.modifiedPaths == ["project/lib/messy.rb"], "formatter modified other files: " + changes.modifiedPaths.join(", "))
+    assert(changes.addedPaths.isEmpty and changes.removedPaths.isEmpty, "formatter added or removed files")
+    let formatted = changes.after.file("project/lib/messy.rb").contents
+    let expected = "# Messy.\nmodule Messy\n  VALUE = 'one'\n  TEXT = <<~DOC\n    kept#{'  '}\n  DOC\n  MULTI = \"a\nb\"\nend\n"
+    assert(formatted == expected, "unexpected layout: " + formatted)
+    let reformatted = tool.format(source.withDirectory("project", changes.after.directory("project")).asWorkspace)
+    assert(reformatted.isEmpty, "formatter is not idempotent")
+    null
+  }
+
+  """
   A clean locked project passes with its own .rubocop.yml and a path gem's
   inherited style.
   """

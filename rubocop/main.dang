@@ -21,4 +21,27 @@ type Rubocop {
   lint(ws: Workspace!): Void @check {
     ruby(root: root, base: base).run(ws, tool: "RuboCop", command: ["bundle", "exec", "rubocop"])
   }
+
+  """
+  Correct offenses of the Layout cops the project enables, with
+  `rubocop --autocorrect --only Layout`, and return the changes to the project
+  root, relative to the workspace root. Layout corrections normally leave
+  behaviour unchanged, but can change multiline string literals: review them.
+  """
+  format(ws: Workspace!): Changeset! @generate {
+    let env = ruby(root: root, base: base)
+    let before = env.container(ws)
+    let ran = before.withExec(
+      ["bundle", "exec", "rubocop", "--autocorrect", "--only", "Layout", "--raise-cop-error"],
+      expect: ANY,
+    )
+    # RuboCop exits 1 for offenses it cannot correct, and 2 when it fails.
+    if (ran.exitCode > 1) {
+      raise "RuboCop format failed in " + env.path + ":\n" + ran.stdout + ran.stderr
+    }
+    let project = "/src/" + env.path
+    directory.withDirectory(env.path, ran.directory(project)).changes(
+      directory.withDirectory(env.path, before.directory(project)),
+    )
+  }
 }

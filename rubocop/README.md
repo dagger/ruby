@@ -13,6 +13,14 @@ dagger check
 The `lint` check runs `bundle exec rubocop` in the project root and fails with
 RuboCop's offenses.
 
+The `format` generator runs `bundle exec rubocop --autocorrect --only Layout`:
+only the Layout cops the project's configuration enables, with its parameters;
+Layout cops it disables stay off. Remaining offenses stay for `lint`. Layout
+corrections normally leave behaviour unchanged, but trailing spaces inside a
+multiline string literal are removed, changing its content (heredocs keep
+theirs). Review the diff. Run it from the workspace root; it changes only files
+under `root`.
+
 ## Settings
 
 `root` and `base`, and the project requirements, are those of the
