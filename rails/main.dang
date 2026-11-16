@@ -1,9 +1,9 @@
-pub description = "Run a locked Rails app's tests against its SQLite test database"
+pub description = "Test a locked Rails app on its SQLite test database, and serve it"
 
 """
-Rails tests for one Bundler project, run as `bin/rails test`. Rails loads
-db/schema.rb into the test database itself, so the development database is
-never created or migrated.
+Rails tests and a development server for one Bundler project. Tests run as
+`bin/rails test`, which loads db/schema.rb into the test database itself, so
+the development database is never created or migrated.
 """
 type Rails {
   """
@@ -21,5 +21,17 @@ type Rails {
   """
   test(ws: Workspace!): Void @check {
     ruby(root: root, base: base).run(ws, tool: "Rails tests", command: ["bin/rails", "test"])
+  }
+
+  """
+  Serve the app in development with `bin/rails server` on port 3000. Rails
+  only answers its development hosts, such as localhost.
+  """
+  server(ws: Workspace!): Service! @up {
+    ruby(root: root, base: base)
+      .container(ws)
+      .withEnvVariable("RAILS_ENV", "development")
+      .withExposedPort(3000)
+      .asService(args: ["bin/rails", "server", "-b", "0.0.0.0", "-p", "3000"])
   }
 }

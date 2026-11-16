@@ -105,6 +105,17 @@ type E2e {
   }
 
   """
+  The Rails service answers its health endpoint.
+  """
+  railsServerCheck(ws: Workspace!): Void @check {
+    customBase
+      .withServiceBinding("rails", rails(root: "project").server(ws.directory("/rails/testdata").asWorkspace))
+      .withExec(["curl", "-fsS", "-H", "Host: localhost", "http://rails:3000/up"])
+      .sync
+    null
+  }
+
+  """
   A clean locked project passes with its own .rubocop.yml and a path gem's
   inherited style.
   """
