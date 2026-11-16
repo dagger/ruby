@@ -1,0 +1,25 @@
+pub description = "Run a locked Rails app's tests against its SQLite test database"
+
+"""
+Rails tests for one Bundler project, run as `bin/rails test`. Rails loads
+db/schema.rb into the test database itself, so the development database is
+never created or migrated.
+"""
+type Rails {
+  """
+  Project root. See the `ruby` module.
+  """
+  root: String! = "."
+
+  """
+  Custom Ruby container. See the `ruby` module.
+  """
+  base: Container
+
+  """
+  Run `bin/rails test` in the project root and fail with its output.
+  """
+  test(ws: Workspace!): Void @check {
+    ruby(root: root, base: base).run(ws, tool: "Rails tests", command: ["bin/rails", "test"])
+  }
+}

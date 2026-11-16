@@ -87,6 +87,24 @@ type E2e {
   }
 
   """
+  A Rails app's tests pass on its SQLite test database; a failing test fails
+  with Rails' output.
+  """
+  railsSqliteCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/rails/testdata")
+    let tool = rails(root: "project")
+    let result = failureOf(tool.test(source.asWorkspace))
+    assert(result == "passed", "passing app failed: " + result)
+    let broken = source.withNewFile(
+      "project/test/models/broken_test.rb",
+      "require \"test_helper\"\n\nclass BrokenTest < ActiveSupport::TestCase\n  test \"fails\" do\n    flunk \"rails failure sentinel\"\n  end\nend\n",
+    )
+    let failed = failureOf(tool.test(broken.asWorkspace))
+    assert(failed.contains("rails failure sentinel"), "failing test did not fail with its output: " + failed)
+    null
+  }
+
+  """
   A clean locked project passes with its own .rubocop.yml and a path gem's
   inherited style.
   """

@@ -19,3 +19,7 @@ engineVersion = "v1.0.0-beta.25"
 [[dependencies]]
   name = "rspec"
   source = "../../../rspec"
+
+[[dependencies]]
+  name = "rails"
+  source = "../../../rails"

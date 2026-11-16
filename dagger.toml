@@ -27,7 +27,12 @@ is-module = true
 name = "rspec"
 clients = ["./ruby"]
 
+[sdks.dang.scopes."rails"]
+is-module = true
+name = "rails"
+clients = ["./ruby"]
+
 [sdks.dang.scopes.".dagger/modules/e2e"]
 is-module = true
 name = "e2e"
-clients = ["./ruby", "./rubocop", "./minitest", "./rspec"]
+clients = ["./ruby", "./rubocop", "./minitest", "./rspec", "./rails"]
