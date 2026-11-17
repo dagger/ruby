@@ -22,9 +22,11 @@ type BundlerAudit {
   audit(ws: Workspace!): Void @check @cache(policy: FunctionCachePolicy.PerSession) {
     # PerSession stops this call replaying an old verdict; the new database
     # path stops the exec replaying and any database in the base being reused.
+    # Not `gem exec`: it always builds ri docs, which crash when the bundle
+    # locks an rdoc other than Ruby's default gem.
     ruby(root: root, base: base).run(ws, tool: "bundler-audit", command: [
-      "gem", "exec", "-g", "bundler-audit", "-v", "0.9.3", "bundle-audit", "check",
-      "--update", "--database", "/tmp/ruby-advisory-db-" + UUID.v7,
+      "sh", "-c",
+      "gem install --no-document bundler-audit -v 0.9.3 && exec bundle-audit _0.9.3_ check --update --database /tmp/ruby-advisory-db-" + UUID.v7,
     ])
   }
 }
