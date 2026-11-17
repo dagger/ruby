@@ -5,6 +5,30 @@ engineVersion = "v1.0.0-beta.25"
   source = "dang"
 
 [[dependencies]]
+  name = "brakeman"
+  source = "../../../brakeman"
+
+[[dependencies]]
+  name = "bundler-audit"
+  source = "../../../bundler-audit"
+
+[[dependencies]]
+  name = "gem"
+  source = "../../../gem"
+
+[[dependencies]]
+  name = "minitest"
+  source = "../../../minitest"
+
+[[dependencies]]
+  name = "rails"
+  source = "../../../rails"
+
+[[dependencies]]
+  name = "rspec"
+  source = "../../../rspec"
+
+[[dependencies]]
   name = "rubocop"
   source = "../../../rubocop"
 
@@ -13,33 +37,9 @@ engineVersion = "v1.0.0-beta.25"
   source = "../../../ruby"
 
 [[dependencies]]
-  name = "minitest"
-  source = "../../../minitest"
-
-[[dependencies]]
-  name = "rspec"
-  source = "../../../rspec"
-
-[[dependencies]]
-  name = "rails"
-  source = "../../../rails"
-
-[[dependencies]]
-  name = "bundler-audit"
-  source = "../../../bundler-audit"
-
-[[dependencies]]
-  name = "brakeman"
-  source = "../../../brakeman"
-
-[[dependencies]]
   name = "sorbet"
   source = "../../../sorbet"
 
 [[dependencies]]
   name = "yard"
   source = "../../../yard"
-
-[[dependencies]]
-  name = "gem"
-  source = "../../../gem"
