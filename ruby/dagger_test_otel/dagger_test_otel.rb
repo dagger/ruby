@@ -61,6 +61,7 @@ module DaggerTestOtel
     end
 
     def start = @start = DaggerTestOtel.now
+    def fail! = @failed = true
 
     def record(attrs, duration, errors)
       finish = DaggerTestOtel.now

@@ -59,19 +59,33 @@ type Ruby {
 
   """
   ctr with the bundled OpenTelemetry exporter loaded through RUBYOPT, so a
-  Minitest run sends a session span named suite and one span per test to the
-  trace Dagger provides. An export failure only warns.
+  Minitest or, for suite "rspec", an RSpec run sends a session span named
+  suite and one span per test to the trace Dagger provides. An export failure
+  only warns.
   """
   let withTestTracing(ctr: Container!, suite: String!): Container! {
     # Added after the bundle is installed and loaded through RUBYOPT, so the
-    # project's Gemfile and lock are never touched. bundle exec loads Ruby
-    # executables in-process, after RUBYOPT has run, and the plugin acts only
-    # on a bundle that is already set up; a real exec sets it up first.
-    ctr
+    # project's Gemfile and lock are never touched.
+    let traced = ctr
       .withDirectory("/opt/dagger_test_otel", currentModule.source.directory("dagger_test_otel"))
+      .withEnvVariable("RUBYOPT", "${RUBYOPT} -I/opt/dagger_test_otel", expand: true)
       .withEnvVariable("DAGGER_TEST_SUITE", suite)
-      .withEnvVariable("BUNDLE_DISABLE_EXEC_LOAD", "true")
-      .withEnvVariable("RUBYOPT", "${RUBYOPT} -I/opt/dagger_test_otel -rdagger_minitest_otel", expand: true)
+    if (suite == "rspec") {
+      # SPEC_OPTS formats replace those of .rspec, so progress keeps a console
+      # format alongside the exporter.
+      traced.withEnvVariable(
+        "SPEC_OPTS",
+        "${SPEC_OPTS} --require dagger_rspec_otel --format DaggerRspecOtel --format progress",
+        expand: true,
+      )
+    } else {
+      # bundle exec loads Ruby executables in-process, after RUBYOPT has run,
+      # and the plugin acts only on a bundle that is already set up; a real
+      # exec sets it up first.
+      traced
+        .withEnvVariable("BUNDLE_DISABLE_EXEC_LOAD", "true")
+        .withEnvVariable("RUBYOPT", "${RUBYOPT} -rdagger_minitest_otel", expand: true)
+    }
   }
 
   """

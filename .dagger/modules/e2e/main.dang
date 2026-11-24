@@ -82,7 +82,8 @@ type E2e {
       "project/spec/broken_spec.rb",
       "RSpec.describe \"broken\" do\n  it \"fails\" do\n    expect(1).to eq(2), \"rspec failure sentinel\"\n  end\nend\n",
     )
-    let failed = failureOf(tool.test(broken.asWorkspace))
+    # Untraced, so this expected failure stays out of Dagger's test summary.
+    let failed = failureOf(rspec(root: "project", tracing: false).test(broken.asWorkspace))
     assert(failed.contains("rspec failure sentinel"), "failing spec did not fail with its output: " + failed)
     null
   }
