@@ -12,6 +12,13 @@ type E2e {
     if (check.pass) { "passed" } else { check.error.message ?? "check failed" }
   }
 
+  # The test tools raise with their output when a run fails.
+  let outcome(&run(): Void): String! {
+    { run(); "passed" } rescue {
+      err: Error => err.message
+    }
+  }
+
   let errorOf(env: Ruby!, ws: Workspace!): String! {
     { env.container(ws).sync; "passed" } rescue {
       err: Error => err.message
@@ -58,14 +65,14 @@ type E2e {
   minitestCheck(ws: Workspace!): Void @check {
     let source = ws.directory("/minitest/testdata")
     let tool = minitest(root: "project")
-    let result = failureOf(tool.test(source.asWorkspace))
+    let result = outcome { tool.test(source.asWorkspace) }
     assert(result == "passed", "passing suite failed: " + result)
     let broken = source.withNewFile(
       "project/test/broken_test.rb",
       "require \"minitest/autorun\"\n\nclass BrokenTest < Minitest::Test\n  def test_broken\n    flunk \"minitest failure sentinel\"\n  end\nend\n",
     )
     # Untraced, so this expected failure stays out of Dagger's test summary.
-    let failed = failureOf(minitest(root: "project", tracing: false).test(broken.asWorkspace))
+    let failed = outcome { minitest(root: "project", tracing: false).test(broken.asWorkspace) }
     assert(failed.contains("minitest failure sentinel"), "failing test did not fail with its output: " + failed)
     null
   }
@@ -76,14 +83,14 @@ type E2e {
   rspecCheck(ws: Workspace!): Void @check {
     let source = ws.directory("/rspec/testdata")
     let tool = rspec(root: "project")
-    let result = failureOf(tool.test(source.asWorkspace))
+    let result = outcome { tool.test(source.asWorkspace) }
     assert(result == "passed", "passing suite failed: " + result)
     let broken = source.withNewFile(
       "project/spec/broken_spec.rb",
       "RSpec.describe \"broken\" do\n  it \"fails\" do\n    expect(1).to eq(2), \"rspec failure sentinel\"\n  end\nend\n",
     )
     # Untraced, so this expected failure stays out of Dagger's test summary.
-    let failed = failureOf(rspec(root: "project", tracing: false).test(broken.asWorkspace))
+    let failed = outcome { rspec(root: "project", tracing: false).test(broken.asWorkspace) }
     assert(failed.contains("rspec failure sentinel"), "failing spec did not fail with its output: " + failed)
     null
   }
@@ -95,14 +102,14 @@ type E2e {
   railsSqliteCheck(ws: Workspace!): Void @check {
     let source = ws.directory("/rails/testdata")
     let tool = rails(root: "project")
-    let result = failureOf(tool.test(source.asWorkspace))
+    let result = outcome { tool.test(source.asWorkspace) }
     assert(result == "passed", "passing app failed: " + result)
     let broken = source.withNewFile(
       "project/test/models/broken_test.rb",
       "require \"test_helper\"\n\nclass BrokenTest < ActiveSupport::TestCase\n  test \"fails\" do\n    flunk \"rails failure sentinel\"\n  end\nend\n",
     )
     # Untraced, so this expected failure stays out of Dagger's test summary.
-    let failed = failureOf(rails(root: "project", tracing: false).test(broken.asWorkspace))
+    let failed = outcome { rails(root: "project", tracing: false).test(broken.asWorkspace) }
     assert(failed.contains("rails failure sentinel"), "failing test did not fail with its output: " + failed)
     null
   }
@@ -311,8 +318,10 @@ type E2e {
     receiver.start
     let host = receiver.endpoint(scheme: "http")
     let traced = minitest(root: "project", base: redirect(host + "/v1/traces"))
-    assert(failureOf(traced.test(source.asWorkspace)) == "passed", "traced passing suite failed")
-    assert(failureOf(traced.test(broken.asWorkspace)).contains("minitest failure sentinel"), "traced failing suite passed")
+    let passed = outcome { traced.test(source.asWorkspace) }
+    assert(passed == "passed", "traced passing suite failed: " + passed)
+    let failed = outcome { traced.test(broken.asWorkspace) }
+    assert(failed.contains("minitest failure sentinel"), "traced failing suite passed")
     let spans = customBase.withExec(["curl", "-fsS", host + "/spans?run=" + UUID.v7]).stdout.split("\n")
     # Test order within a run is random, so compare counts, not positions.
     let expected = [
@@ -324,7 +333,8 @@ type E2e {
       "receiver did not get exactly the expected spans: " + spans.join(", "),
     )
     let unreachable = minitest(root: "project", base: redirect("http://127.0.0.1:9/v1/traces"))
-    assert(failureOf(unreachable.test(source.asWorkspace)) == "passed", "an unreachable collector failed the tests")
+    let unreached = outcome { unreachable.test(source.asWorkspace) }
+    assert(unreached == "passed", "an unreachable collector failed the tests: " + unreached)
     null
   }
 

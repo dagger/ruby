@@ -24,14 +24,29 @@ type Rails {
   tracing: Boolean! = true
 
   """
-  Run `bin/rails test` in the project root and fail with its output.
+  Run `bin/rails test` in the project root, with the selected files when there
+  is a selection, and fail with its output. `dagger check` runs it through
+  `tests`.
   """
-  test(ws: Workspace!): Void @check {
+  test(ws: Workspace!, selection: RailsTestFiles): Void {
     ruby(root: root, base: base).run(
       ws,
       tool: "Rails tests",
       command: ["bundle", "exec", "bin/rails", "test"],
+      files: if (selection == null) { null } else { selection!.selected },
       suite: if (tracing) { "rails" } else { null },
+    )
+  }
+
+  """
+  Test files `bin/rails test` runs: those under test/ named *_test.rb, except
+  in test/system, test/dummy and test/fixtures. Keyed by path relative to the
+  project root.
+  """
+  tests(ws: Workspace!): RailsTestFiles! {
+    RailsTestFiles(
+      files: ruby(root: root, base: base).files(ws, ["test/**/*_test.rb"], exclude: ["test/system/**", "test/dummy/**", "test/fixtures/**"]),
+      tool: self,
     )
   }
 
@@ -58,5 +73,55 @@ type Rails {
       .withEnvVariable("SECRET_KEY_BASE_DUMMY", "1")
       .withExec(["bin/rails", "assets:precompile"])
       .directory("public/assets")
+  }
+}
+
+"""
+Rails test files, keyed by path relative to the project root.
+"""
+type RailsTestFiles @collection {
+  """
+  Test file paths, relative to the project root.
+  """
+  files: [String!]! @keys
+
+  delta: CollectionDelta @delta
+
+  """
+  The selected files; null when the selection left none out.
+  """
+  selected: [String!] {
+    if (delta == null or delta!.removedKeys.length > 0) { files } else { null }
+  }
+
+  let tool: Rails!
+
+  """
+  The test file at this path.
+  """
+  file(path: String!): RailsTestFile! @get {
+    RailsTestFile(path: path)
+  }
+
+  """
+  Run the selected test files in one command.
+  """
+  test(ws: Workspace!): Void {
+    tool.test(ws, selection: self)
+  }
+}
+
+"""
+A Rails test file.
+"""
+type RailsTestFile {
+  path: String!
+
+  """
+  Run the selection this file is in. Every selected file's check runs the same
+  command, so the selection runs once.
+  """
+  test(ws: Workspace!, selection: RailsTestFiles!): Void @check {
+    selection.test(ws)
   }
 }
