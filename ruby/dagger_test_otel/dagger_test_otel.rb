@@ -6,7 +6,7 @@ require "net/http"
 require "securerandom"
 require "timeout"
 
-module DaggerMinitestOtel
+module DaggerTestOtel
   module_function
 
   def varint(n)
@@ -42,11 +42,17 @@ module DaggerMinitestOtel
     field(11, fixed64(1, time) + text(2, "exception") + attributes(3, { "exception.type" => error.class.name }))
   end
 
-  class Reporter < Minitest::AbstractReporter
-    def initialize(endpoint, traceparent)
-      super()
+  def endpoint
+    base = ENV["OTEL_EXPORTER_OTLP_ENDPOINT"]
+    url = ENV["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] || (base && "#{base.chomp("/")}/v1/traces")
+    url if url&.start_with?("http")
+  end
+
+  class Session
+    def initialize(endpoint, traceparent, suite)
       _, trace, parent, = traceparent.to_s.split("-")
       @endpoint = endpoint
+      @suite = suite
       @trace_id = [trace || SecureRandom.hex(16)].pack("H*")
       @parent = parent && [parent].pack("H*")
       @session = SecureRandom.bytes(8)
@@ -54,31 +60,26 @@ module DaggerMinitestOtel
       @failed = false
     end
 
-    def start = @start = DaggerMinitestOtel.now
+    def start = @start = DaggerTestOtel.now
 
-    def record(result)
-      finish = DaggerMinitestOtel.now
-      outcome = if result.skipped? then "skipped" elsif result.passed? then "pass" else "fail" end
-      @failed ||= outcome == "fail"
-      attrs = { "test.case.name" => "#{result.klass}##{result.name}", "code.namespace" => result.klass,
-                "code.function" => result.name, "test.case.result.status" => outcome }
-      attrs["test.case.result.reason"] = result.failure.message if outcome == "skipped"
-      errors = outcome == "fail" ? result.failures.map { |f| f.respond_to?(:error) ? f.error : f } : []
-      events = errors.map { |error| DaggerMinitestOtel.exception(error, finish) }.join.b
-      @spans << DaggerMinitestOtel.span(@trace_id, SecureRandom.bytes(8), @session, attrs["test.case.name"],
-                                        finish - (result.time * 1e9).to_i, finish, attrs,
-                                        outcome == "fail" ? "test failed" : nil, events)
+    def record(attrs, duration, errors)
+      finish = DaggerTestOtel.now
+      failed = attrs["test.case.result.status"] == "fail"
+      @failed ||= failed
+      events = errors.map { |error| DaggerTestOtel.exception(error, finish) }.join.b
+      @spans << DaggerTestOtel.span(@trace_id, SecureRandom.bytes(8), @session, attrs["test.case.name"],
+                                    finish - (duration * 1e9).to_i, finish, attrs, failed ? "test failed" : nil, events)
     end
 
-    def report
+    def export
       status = @failed ? "failure" : "success"
-      session = DaggerMinitestOtel.span(@trace_id, @session, @parent, "minitest", @start, DaggerMinitestOtel.now,
-                                        { "test.suite.name" => "minitest", "test.suite.run.status" => status },
-                                        @failed ? "test session failed" : nil)
-      scope = DaggerMinitestOtel.field(1, DaggerMinitestOtel.text(1, "dagger_minitest_otel")) +
-              ([session] + @spans).map { |s| DaggerMinitestOtel.field(2, s) }.join.b
-      resource = DaggerMinitestOtel.field(1, DaggerMinitestOtel.attributes(1, { "service.name" => "minitest" }))
-      body = DaggerMinitestOtel.field(1, resource + DaggerMinitestOtel.field(2, scope))
+      session = DaggerTestOtel.span(@trace_id, @session, @parent, @suite, @start,
+                                    DaggerTestOtel.now, { "test.suite.name" => @suite, "test.suite.run.status" => status },
+                                    @failed ? "test session failed" : nil)
+      scope = DaggerTestOtel.field(1, DaggerTestOtel.text(1, "dagger_test_otel")) +
+              ([session] + @spans).map { |s| DaggerTestOtel.field(2, s) }.join.b
+      resource = DaggerTestOtel.field(1, DaggerTestOtel.attributes(1, { "service.name" => @suite }))
+      body = DaggerTestOtel.field(1, resource + DaggerTestOtel.field(2, scope))
       uri = URI(@endpoint)
       Timeout.timeout(5) do
         Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https",
@@ -87,15 +88,7 @@ module DaggerMinitestOtel
         end
       end
     rescue StandardError => e
-      warn "\ndagger_minitest_otel: spans not exported: #{e.class}: #{e.message}"
+      warn "\ndagger_test_otel: spans not exported: #{e.class}: #{e.message}"
     end
-  end
-end
-
-module Minitest
-  def self.plugin_dagger_otel_init(_options)
-    base = ENV["OTEL_EXPORTER_OTLP_ENDPOINT"]
-    endpoint = ENV["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] || (base && "#{base.chomp("/")}/v1/traces")
-    reporter << DaggerMinitestOtel::Reporter.new(endpoint, ENV["TRACEPARENT"]) if endpoint&.start_with?("http")
   end
 end

@@ -17,10 +17,22 @@ type Rails {
   base: Container
 
   """
+  Whether to load the bundled OpenTelemetry plugin, which sends a session span
+  and one span per test to the trace Dagger provides. An export failure only
+  warns; it never changes the verdict.
+  """
+  tracing: Boolean! = true
+
+  """
   Run `bin/rails test` in the project root and fail with its output.
   """
   test(ws: Workspace!): Void @check {
-    ruby(root: root, base: base).run(ws, tool: "Rails tests", command: ["bin/rails", "test"])
+    ruby(root: root, base: base).run(
+      ws,
+      tool: "Rails tests",
+      command: ["bundle", "exec", "bin/rails", "test"],
+      suite: if (tracing) { "rails" } else { null },
+    )
   }
 
   """

@@ -100,7 +100,8 @@ type E2e {
       "project/test/models/broken_test.rb",
       "require \"test_helper\"\n\nclass BrokenTest < ActiveSupport::TestCase\n  test \"fails\" do\n    flunk \"rails failure sentinel\"\n  end\nend\n",
     )
-    let failed = failureOf(tool.test(broken.asWorkspace))
+    # Untraced, so this expected failure stays out of Dagger's test summary.
+    let failed = failureOf(rails(root: "project", tracing: false).test(broken.asWorkspace))
     assert(failed.contains("rails failure sentinel"), "failing test did not fail with its output: " + failed)
     null
   }
