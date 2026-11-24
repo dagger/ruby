@@ -58,13 +58,62 @@ type Ruby {
   }
 
   """
-  Run a tool's command in the project root and fail with its output.
+  Paths of the files under the project root that match any of globs and none
+  of exclude, relative to the root.
   """
-  run(ws: Workspace!, tool: String!, command: [String!]!): Void {
-    let ran = container(ws).withExec(command, expect: ANY)
-    if (ran.exitCode != 0) {
-      raise tool + " failed in " + path + ":\n" + ran.stdout + ran.stderr
+  files(ws: Workspace!, globs: [String!]!, exclude: [String!]! = []): [String!]! {
+    let dir = ws.directory("/" + path, include: globs, exclude: exclude)
+    let empty: [String!]! = []
+    globs.reduce(empty) { all, glob => all + dir.glob(glob) }.uniq
+  }
+
+  """
+  ctr with the bundled OpenTelemetry exporter loaded through RUBYOPT, so a
+  Minitest or, for suite "rspec", an RSpec run sends a session span named
+  suite and one span per test to the trace Dagger provides. An export failure
+  only warns.
+  """
+  let withTestTracing(ctr: Container!, suite: String!): Container! {
+    # Added after the bundle is installed and loaded through RUBYOPT, so the
+    # project's Gemfile and lock are never touched.
+    let traced = ctr
+      .withDirectory("/opt/dagger_test_otel", currentModule.source.directory("dagger_test_otel"))
+      .withEnvVariable("RUBYOPT", "${RUBYOPT} -I/opt/dagger_test_otel", expand: true)
+      .withEnvVariable("DAGGER_TEST_SUITE", suite)
+    if (suite == "rspec") {
+      # SPEC_OPTS formats replace those of .rspec, so progress keeps a console
+      # format alongside the exporter.
+      traced.withEnvVariable(
+        "SPEC_OPTS",
+        "${SPEC_OPTS} --require dagger_rspec_otel --format DaggerRspecOtel --format progress",
+        expand: true,
+      )
+    } else {
+      # bundle exec loads Ruby executables in-process, after RUBYOPT has run,
+      # and the plugin acts only on a bundle that is already set up; a real
+      # exec sets it up first.
+      traced
+        .withEnvVariable("BUNDLE_DISABLE_EXEC_LOAD", "true")
+        .withEnvVariable("RUBYOPT", "${RUBYOPT} -rdagger_minitest_otel", expand: true)
     }
-    null
+  }
+
+  """
+  Run a tool's command in the project root and fail with its output. Files,
+  when given, follow the command; an empty list runs nothing. With suite, the
+  run sends a session span named suite and one span per test to the trace
+  Dagger provides.
+  """
+  run(ws: Workspace!, tool: String!, command: [String!]!, files: [String!], suite: String): Void {
+    if (files == []) {
+      null
+    } else {
+      let ctr = if (suite == null) { container(ws) } else { withTestTracing(container(ws), suite: suite!) }
+      let ran = ctr.withExec(command + (files ?? []), expect: ANY)
+      if (ran.exitCode != 0) {
+        raise tool + " failed in " + path + ":\n" + ran.stdout + ran.stderr
+      }
+      null
+    }
   }
 }

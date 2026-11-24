@@ -8,10 +8,21 @@ dagger install github.com/dagger/ruby/rails
 dagger check
 ```
 
-Its `test` check runs `bin/rails test`, not system tests. Rails loads
+Its tests run as `bundle exec bin/rails test`, not system tests. Rails loads
 `db/schema.rb` into the test database, so an app whose test database is SQLite
 needs no services, and only that database is created: the development database
 is not.
+
+With `tracing` (on by default), each test is a span in the trace Dagger
+provides, exported as the [`minitest` module](../minitest/README.md) describes,
+under a session span named `rails`. The test files `bin/rails test` runs by
+default form a collection with one check per file; together they run the tests
+once, and an app with no such files gets no checks. Select files with
+`--rails-test-file`, and only those run:
+
+```sh
+dagger check --rails-test-file=test/models/user_test.rb
+```
 
 `server` is the module's `dagger start` service: `bin/rails server` in
 development on port 3000, answering only Rails' development hosts such as

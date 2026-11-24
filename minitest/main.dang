@@ -23,22 +23,76 @@ type Minitest {
   tracing: Boolean! = true
 
   """
-  Run `bundle exec rake test` in the project root and fail with its output.
+  Run the Minitest suite in the project root and fail with its output: the
+  whole suite as `bundle exec rake test`, or only the selected files with
+  Minitest 6's `minitest` runner. `dagger check` runs it through `tests`.
   """
-  test(ws: Workspace!): Void @check {
-    let env = ruby(root: root, base: base)
-    let installed = env.container(ws)
-    # Added after the bundle is installed and loaded through RUBYOPT, so the
-    # project's Gemfile and lock are never touched.
-    let ctr = if (tracing) {
-      installed
-        .withDirectory("/opt/dagger_minitest_otel", currentModule.source.directory("dagger_minitest_otel"))
-        .withEnvVariable("RUBYOPT", "${RUBYOPT} -I/opt/dagger_minitest_otel -rdagger_minitest_otel", expand: true)
-    } else { installed }
-    let ran = ctr.withExec(["bundle", "exec", "rake", "test"], expect: ANY)
-    if (ran.exitCode != 0) {
-      raise "Minitest failed in " + env.path + ":\n" + ran.stdout + ran.stderr
-    }
-    null
+  test(ws: Workspace!, selection: MinitestTestFiles): Void {
+    let files = if (selection == null) { null } else { selection!.selected }
+    ruby(root: root, base: base).run(
+      ws,
+      tool: "Minitest",
+      command: if (files == null) { ["bundle", "exec", "rake", "test"] } else { ["bundle", "exec", "minitest"] },
+      files: files,
+      suite: if (tracing) { "minitest" } else { null },
+    )
+  }
+
+  """
+  Test files under test/ named test_*.rb or *_test.rb, as Minitest::TestTask
+  finds by default, keyed by path relative to the project root.
+  """
+  tests(ws: Workspace!): MinitestTestFiles! {
+    MinitestTestFiles(files: ruby(root: root, base: base).files(ws, ["test/**/test_*.rb", "test/**/*_test.rb"]), tool: self)
+  }
+}
+
+"""
+Minitest test files, keyed by path relative to the project root.
+"""
+type MinitestTestFiles @collection {
+  """
+  Test file paths, relative to the project root.
+  """
+  files: [String!]! @keys
+
+  delta: CollectionDelta @delta
+
+  """
+  The selected files; null when the selection left none out.
+  """
+  selected: [String!] {
+    if (delta == null or delta!.removedKeys.length > 0) { files } else { null }
+  }
+
+  let tool: Minitest!
+
+  """
+  The test file at this path.
+  """
+  file(path: String!): MinitestTestFile! @get {
+    MinitestTestFile(path: path)
+  }
+
+  """
+  Run the selected test files in one command.
+  """
+  test(ws: Workspace!): Void {
+    tool.test(ws, selection: self)
+  }
+}
+
+"""
+A Minitest test file.
+"""
+type MinitestTestFile {
+  path: String!
+
+  """
+  Run the selection this file is in. Every selected file's check runs the same
+  command, so the selection runs once.
+  """
+  test(ws: Workspace!, selection: MinitestTestFiles!): Void @check {
+    selection.test(ws)
   }
 }

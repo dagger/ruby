@@ -12,6 +12,16 @@ type E2e {
     if (check.pass) { "passed" } else { check.error.message ?? "check failed" }
   }
 
+  let minitestBroken: String! = "require \"minitest/autorun\"\n\nclass BrokenTest < Minitest::Test\n  def test_broken\n    flunk \"minitest failure sentinel\"\n  end\nend\n"
+  let rspecBroken: String! = "RSpec.describe \"broken\" do\n  it \"fails\" do\n    expect(1).to eq(2), \"rspec failure sentinel\"\n  end\nend\n"
+
+  # The test tools raise with their output when a run fails.
+  let outcome(&run(): Void): String! {
+    { run(); "passed" } rescue {
+      err: Error => err.message
+    }
+  }
+
   let errorOf(env: Ruby!, ws: Workspace!): String! {
     { env.container(ws).sync; "passed" } rescue {
       err: Error => err.message
@@ -58,14 +68,11 @@ type E2e {
   minitestCheck(ws: Workspace!): Void @check {
     let source = ws.directory("/minitest/testdata")
     let tool = minitest(root: "project")
-    let result = failureOf(tool.test(source.asWorkspace))
+    let result = outcome { tool.test(source.asWorkspace) }
     assert(result == "passed", "passing suite failed: " + result)
-    let broken = source.withNewFile(
-      "project/test/broken_test.rb",
-      "require \"minitest/autorun\"\n\nclass BrokenTest < Minitest::Test\n  def test_broken\n    flunk \"minitest failure sentinel\"\n  end\nend\n",
-    )
+    let broken = source.withNewFile("project/test/broken_test.rb", minitestBroken)
     # Untraced, so this expected failure stays out of Dagger's test summary.
-    let failed = failureOf(minitest(root: "project", tracing: false).test(broken.asWorkspace))
+    let failed = outcome { minitest(root: "project", tracing: false).test(broken.asWorkspace) }
     assert(failed.contains("minitest failure sentinel"), "failing test did not fail with its output: " + failed)
     null
   }
@@ -76,13 +83,11 @@ type E2e {
   rspecCheck(ws: Workspace!): Void @check {
     let source = ws.directory("/rspec/testdata")
     let tool = rspec(root: "project")
-    let result = failureOf(tool.test(source.asWorkspace))
+    let result = outcome { tool.test(source.asWorkspace) }
     assert(result == "passed", "passing suite failed: " + result)
-    let broken = source.withNewFile(
-      "project/spec/broken_spec.rb",
-      "RSpec.describe \"broken\" do\n  it \"fails\" do\n    expect(1).to eq(2), \"rspec failure sentinel\"\n  end\nend\n",
-    )
-    let failed = failureOf(tool.test(broken.asWorkspace))
+    let broken = source.withNewFile("project/spec/broken_spec.rb", rspecBroken)
+    # Untraced, so this expected failure stays out of Dagger's test summary.
+    let failed = outcome { rspec(root: "project", tracing: false).test(broken.asWorkspace) }
     assert(failed.contains("rspec failure sentinel"), "failing spec did not fail with its output: " + failed)
     null
   }
@@ -94,13 +99,14 @@ type E2e {
   railsSqliteCheck(ws: Workspace!): Void @check {
     let source = ws.directory("/rails/testdata")
     let tool = rails(root: "project")
-    let result = failureOf(tool.test(source.asWorkspace))
+    let result = outcome { tool.test(source.asWorkspace) }
     assert(result == "passed", "passing app failed: " + result)
     let broken = source.withNewFile(
       "project/test/models/broken_test.rb",
       "require \"test_helper\"\n\nclass BrokenTest < ActiveSupport::TestCase\n  test \"fails\" do\n    flunk \"rails failure sentinel\"\n  end\nend\n",
     )
-    let failed = failureOf(tool.test(broken.asWorkspace))
+    # Untraced, so this expected failure stays out of Dagger's test summary.
+    let failed = outcome { rails(root: "project", tracing: false).test(broken.asWorkspace) }
     assert(failed.contains("rails failure sentinel"), "failing test did not fail with its output: " + failed)
     null
   }
@@ -292,37 +298,138 @@ type E2e {
       .withEnvVariable("RUBYOPT", "-r/redirect.rb")
   }
 
+  # Services with the same definition are one service, so each check names
+  # its own receiver.
+  let otlpReceiver(name: String!): String! {
+    let receiver = customBase
+      .withFile("/receiver.rb", currentModule.source.file("mock-otlp-receiver.rb"))
+      .withExposedPort(4318)
+      .asService(args: ["ruby", "/receiver.rb", name])
+    receiver.start
+    receiver.endpoint(scheme: "http")
+  }
+
+  # Test order within a run is random, so compare counts, not positions.
+  let assertSpans(host: String!, expected: [String!]!): Void {
+    let spans = customBase.withExec(["curl", "-fsS", host + "/spans?run=" + UUID.v7]).stdout.split("\n")
+    assert(
+      spans.length == expected.length and expected.all { line => countOf(spans, line) == countOf(expected, line) },
+      "receiver did not get exactly the expected spans: " + spans.join(", "),
+    )
+  }
+
   """
   With tracing, Minitest sends a session span and a span per test with its
   outcome; a collector that cannot be reached leaves the verdict unchanged.
   """
   minitestOtelCheck(ws: Workspace!): Void @check {
     let source = ws.directory("/minitest/testdata")
-    let broken = source.withNewFile(
-      "project/test/broken_test.rb",
-      "require \"minitest/autorun\"\n\nclass BrokenTest < Minitest::Test\n  def test_broken\n    flunk \"minitest failure sentinel\"\n  end\nend\n",
-    )
-    let receiver = customBase
-      .withFile("/receiver.rb", currentModule.source.file("mock-otlp-receiver.rb"))
-      .withExposedPort(4318)
-      .asService(args: ["ruby", "/receiver.rb"])
-    receiver.start
-    let host = receiver.endpoint(scheme: "http")
+    let broken = source.withNewFile("project/test/broken_test.rb", minitestBroken)
+    let host = otlpReceiver("minitest-otel")
     let traced = minitest(root: "project", base: redirect(host + "/v1/traces"))
-    assert(failureOf(traced.test(source.asWorkspace)) == "passed", "traced passing suite failed")
-    assert(failureOf(traced.test(broken.asWorkspace)).contains("minitest failure sentinel"), "traced failing suite passed")
-    let spans = customBase.withExec(["curl", "-fsS", host + "/spans?run=" + UUID.v7]).stdout.split("\n")
-    # Test order within a run is random, so compare counts, not positions.
-    let expected = [
+    let passed = outcome { traced.test(source.asWorkspace) }
+    assert(passed == "passed", "traced passing suite failed: " + passed)
+    let failed = outcome { traced.test(broken.asWorkspace) }
+    assert(failed.contains("minitest failure sentinel"), "traced failing suite passed")
+    assertSpans(host, [
       "minitest success", "AdderTest#test_add pass",
       "minitest failure", "AdderTest#test_add pass", "BrokenTest#test_broken fail",
-    ]
-    assert(
-      spans.length == expected.length and expected.all { line => countOf(spans, line) == countOf(expected, line) },
-      "receiver did not get exactly the expected spans: " + spans.join(", "),
-    )
+    ])
     let unreachable = minitest(root: "project", base: redirect("http://127.0.0.1:9/v1/traces"))
-    assert(failureOf(unreachable.test(source.asWorkspace)) == "passed", "an unreachable collector failed the tests")
+    let unreached = outcome { unreachable.test(source.asWorkspace) }
+    assert(unreached == "passed", "an unreachable collector failed the tests: " + unreached)
+    null
+  }
+
+  """
+  With tracing, RSpec sends a session span and a span per example with its
+  outcome.
+  """
+  rspecOtelCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/rspec/testdata")
+    let broken = source.withNewFile("project/spec/broken_spec.rb", rspecBroken)
+    let host = otlpReceiver("rspec-otel")
+    let traced = rspec(root: "project", base: redirect(host + "/v1/traces"))
+    let passed = outcome { traced.test(source.asWorkspace) }
+    assert(passed == "passed", "traced passing suite failed: " + passed)
+    let failed = outcome { traced.test(broken.asWorkspace) }
+    assert(failed.contains("rspec failure sentinel"), "traced failing suite passed")
+    assertSpans(host, [
+      "rspec success", "Adder adds two numbers pass",
+      "rspec failure", "Adder adds two numbers pass", "broken fails fail",
+    ])
+    null
+  }
+
+  """
+  Test files under test/ named test_*.rb or *_test.rb are the collection's
+  keys. Selecting one runs only its tests, selecting none runs nothing, and no
+  selection runs every file.
+  """
+  minitestCollectionCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/minitest/testdata")
+      .withNewFile("project/test/test_other.rb", "require \"minitest/autorun\"\n\nclass OtherTest < Minitest::Test\n  def test_other\n    assert true\n  end\nend\n")
+      .asWorkspace
+    let host = otlpReceiver("minitest-collection")
+    let tool = minitest(root: "project", base: redirect(host + "/v1/traces"))
+    let files = tool.tests(source)
+    assert(files.keys == ["test/test_other.rb", "test/adder_test.rb"], "unexpected test files: " + files.keys.join(", "))
+    tool.test(source, selection: files.subset(keys: ["test/test_other.rb"]))
+    tool.test(source, selection: files.subset(keys: []))
+    tool.test(source)
+    assertSpans(host, [
+      "minitest success", "OtherTest#test_other pass",
+      "minitest success", "AdderTest#test_add pass", "OtherTest#test_other pass",
+    ])
+    null
+  }
+
+  """
+  Rails test files, without system tests, are the collection's keys.
+  Selecting one runs only its tests, selecting none runs nothing, and no
+  selection runs every file.
+  """
+  railsCollectionCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/rails/testdata")
+      .withNewFile("project/test/models/other_test.rb", "require \"test_helper\"\n\nclass OtherTest < ActiveSupport::TestCase\n  test \"runs\" do\n    assert true\n  end\nend\n")
+      .withNewFile("project/test/system/browse_test.rb", "raise \"system tests do not run\"\n")
+      .asWorkspace
+    let host = otlpReceiver("rails-collection")
+    let tool = rails(root: "project", base: redirect(host + "/v1/traces"))
+    let files = tool.tests(source)
+    assert(
+      files.keys == ["test/models/greeting_test.rb", "test/models/other_test.rb"],
+      "unexpected test files: " + files.keys.join(", "),
+    )
+    tool.test(source, selection: files.subset(keys: ["test/models/other_test.rb"]))
+    tool.test(source, selection: files.subset(keys: []))
+    tool.test(source)
+    assertSpans(host, [
+      "rails success", "OtherTest#test_runs pass",
+      "rails success", "GreetingTest#test_greets_a_saved_name pass", "OtherTest#test_runs pass",
+    ])
+    null
+  }
+
+  """
+  Spec files under spec/ are the collection's keys. Selecting one runs only
+  its examples, selecting none runs nothing, and no selection runs every file.
+  """
+  rspecCollectionCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/rspec/testdata")
+      .withNewFile("project/spec/other_spec.rb", "RSpec.describe \"other\" do\n  it \"runs\" do\n    expect(true).to be(true)\n  end\nend\n")
+      .asWorkspace
+    let host = otlpReceiver("rspec-collection")
+    let tool = rspec(root: "project", base: redirect(host + "/v1/traces"))
+    let files = tool.specs(source)
+    assert(files.keys == ["spec/adder_spec.rb", "spec/other_spec.rb"], "unexpected spec files: " + files.keys.join(", "))
+    tool.test(source, selection: files.subset(keys: ["spec/other_spec.rb"]))
+    tool.test(source, selection: files.subset(keys: []))
+    tool.test(source)
+    assertSpans(host, [
+      "rspec success", "other runs pass",
+      "rspec success", "Adder adds two numbers pass", "other runs pass",
+    ])
     null
   }
 

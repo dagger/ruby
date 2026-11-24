@@ -16,9 +16,82 @@ type Rspec {
   base: Container
 
   """
-  Run `bundle exec rspec` in the project root and fail with its output.
+  Whether to load the bundled OpenTelemetry formatter, which sends a session
+  span and one span per example to the trace Dagger provides. An export
+  failure only warns; it never changes the verdict.
   """
-  test(ws: Workspace!): Void @check {
-    ruby(root: root, base: base).run(ws, tool: "RSpec", command: ["bundle", "exec", "rspec"])
+  tracing: Boolean! = true
+
+  """
+  Run `bundle exec rspec` in the project root, with the selected files when
+  there is a selection, and fail with its output. `dagger check` runs it
+  through `specs`.
+  """
+  test(ws: Workspace!, selection: RspecSpecFiles): Void {
+    ruby(root: root, base: base).run(
+      ws,
+      tool: "RSpec",
+      command: ["bundle", "exec", "rspec"],
+      files: if (selection == null) { null } else { selection!.selected },
+      suite: if (tracing) { "rspec" } else { null },
+    )
+  }
+
+  """
+  Spec files under spec/ named *_spec.rb, keyed by path relative to the
+  project root.
+  """
+  specs(ws: Workspace!): RspecSpecFiles! {
+    RspecSpecFiles(files: ruby(root: root, base: base).files(ws, ["spec/**/*_spec.rb"]), tool: self)
+  }
+}
+
+"""
+RSpec spec files, keyed by path relative to the project root.
+"""
+type RspecSpecFiles @collection {
+  """
+  Spec file paths, relative to the project root.
+  """
+  files: [String!]! @keys
+
+  delta: CollectionDelta @delta
+
+  """
+  The selected files; null when the selection left none out.
+  """
+  selected: [String!] {
+    if (delta == null or delta!.removedKeys.length > 0) { files } else { null }
+  }
+
+  let tool: Rspec!
+
+  """
+  The spec file at this path.
+  """
+  file(path: String!): RspecSpecFile! @get {
+    RspecSpecFile(path: path)
+  }
+
+  """
+  Run the selected spec files in one command.
+  """
+  test(ws: Workspace!): Void {
+    tool.test(ws, selection: self)
+  }
+}
+
+"""
+An RSpec spec file.
+"""
+type RspecSpecFile {
+  path: String!
+
+  """
+  Run the selection this file is in. Every selected file's check runs the same
+  command, so the selection runs once.
+  """
+  test(ws: Workspace!, selection: RspecSpecFiles!): Void @check {
+    selection.test(ws)
   }
 }
