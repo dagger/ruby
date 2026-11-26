@@ -1,0 +1,48 @@
+pub description = "Update a Ruby project's Gemfile.lock and return the change"
+
+"""
+Bundler lockfile updates for one Bundler project. Gems are resolved, not
+installed, so a lockfile whose gems cannot install can still be updated.
+"""
+type Bundle {
+  """
+  Project root. See the `ruby` module.
+  """
+  root: String! = "."
+
+  """
+  Custom Ruby container. See the `ruby` module.
+  """
+  base: Container
+
+  """
+  Run `bundle lock --update` in the project root, for gems or every gem when
+  gems is empty, and return the change to Gemfile.lock relative to the
+  workspace root. conservative keeps the gems' shared dependencies at their
+  locked versions. Each Dagger session reads the current gem index.
+  """
+  update(ws: Workspace!, gems: [String!]! = [], conservative: Boolean! = true): Changeset! @cache(policy: FunctionCachePolicy.PerSession) {
+    let invalid = gems.filter { name => name == "" or name.hasPrefix("-") }
+    if (invalid != []) {
+      raise "not a gem name: " + invalid.join(", ")
+    }
+    let env = ruby(root: root, base: base)
+    let project = "/src/" + env.path
+    # Read without the gitignore filter of the workspace mount, so an ignored
+    # lockfile is updated rather than resolved anew and overwritten.
+    let locked = ws.directory("/" + env.path, include: ["Gemfile.lock"])
+    let old = directory.withDirectory(env.path, locked)
+    let noFlags: [String!]! = []
+    let flags = if (conservative and gems != []) { ["--conservative"] } else { noFlags }
+    # The gem index changes while the inputs stay the same, so a fresh run ID
+    # stops the exec replaying an earlier resolution.
+    let ran = env.lockfileContainer(ws)
+      .withDirectory(project, locked)
+      .withEnvVariable("DAGGER_BUNDLE_UPDATE_RUN", UUID.v7)
+      .withExec(["bundle", "lock", "--update"] + gems + flags, expect: ANY)
+    if (ran.exitCode != 0) {
+      raise "bundle lock --update failed in " + env.path + ":\n" + ran.stdout + ran.stderr
+    }
+    old.withDirectory(env.path, ran.directory(project), include: ["Gemfile.lock"]).changes(old)
+  }
+}

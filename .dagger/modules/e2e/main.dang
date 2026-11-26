@@ -175,6 +175,35 @@ type E2e {
   }
 
   """
+  Updating rack moves it off 2.0.1 within 2.x, changing only Gemfile.lock,
+  even when Git ignores it, and updating again changes nothing. An unknown gem
+  fails with its name, an option is not taken as a gem, and a project without
+  Gemfile.lock gets one. The fixture pins rack 2.0.1 on purpose so a newer 2.x
+  always exists; that lockfile triggers Dependabot alerts by design.
+  """
+  bundleUpdateCheck(ws: Workspace!): Void @check {
+    let source = ws.directory("/bundle/testdata")
+    let tool = bundle(root: "project")
+    let changes = tool.update(source.asWorkspace, gems: ["rack"])
+    assert(changes.modifiedPaths == ["project/Gemfile.lock"], "update modified other files: " + changes.modifiedPaths.join(", "))
+    assert(changes.addedPaths.isEmpty and changes.removedPaths.isEmpty, "update added or removed files")
+    let updated = changes.after.file("project/Gemfile.lock")
+    let lock = updated.contents
+    assert(lock.contains("rack (2.0.1)") == false and lock.contains("rack (2."), "rack did not move within 2.x: " + lock)
+    let again = tool.update(source.withFile("project/Gemfile.lock", updated).asWorkspace, gems: ["rack"])
+    assert(again.isEmpty, "a second update changed Gemfile.lock")
+    let unknown = outcome { tool.update(source.asWorkspace, gems: ["no-such-gem"]).isEmpty; null }
+    assert(unknown.contains("no-such-gem"), "an unknown gem did not fail with its name: " + unknown)
+    let option = outcome { tool.update(source.asWorkspace, gems: ["--print"]).isEmpty; null }
+    assert(option.contains("not a gem name: --print"), "an option was taken as a gem: " + option)
+    let ignored = tool.update(source.withNewFile("project/.gitignore", "Gemfile.lock\n").asWorkspace, gems: ["rack"])
+    assert(ignored.modifiedPaths == ["project/Gemfile.lock"], "an ignored lockfile was not updated: " + ignored.addedPaths.join(", "))
+    let created = tool.update(source.withoutFile("project/Gemfile.lock").asWorkspace)
+    assert(created.addedPaths == ["project/Gemfile.lock"], "a missing lockfile was not added: " + created.addedPaths.join(", "))
+    null
+  }
+
+  """
   The Rails fixture scans clean; a controller evaluating a parameter fails
   with Brakeman's Dangerous Eval warning, which the app's config/brakeman.yml
   can skip.

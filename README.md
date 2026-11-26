@@ -11,6 +11,7 @@ and [dagger/java](https://github.com/dagger/java). They require Dagger v1.0.0-be
 | [`rspec`](rspec) | RSpec suite |
 | [`rails`](rails) | Tests on SQLite, development server, asset precompilation |
 | [`bundler-audit`](bundler-audit) | Gemfile.lock advisory audit |
+| [`bundle`](bundle) | Gemfile.lock updates, returned as a changeset |
 | [`brakeman`](brakeman) | Rails security scan |
 | [`sorbet`](sorbet) | Type checking with `srb tc` |
 | [`yard`](yard) | Documentation warnings and HTML build |

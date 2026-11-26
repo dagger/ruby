@@ -9,6 +9,10 @@ name = "brakeman"
 source = "../../../brakeman"
 
 [[dependencies]]
+name = "bundle"
+source = "../../../bundle"
+
+[[dependencies]]
 name = "bundler-audit"
 source = "../../../bundler-audit"
 
