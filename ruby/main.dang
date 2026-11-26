@@ -26,35 +26,46 @@ type Ruby {
     if (normalized == "") { "." } else { normalized }
   }
 
-  """
-  The workspace at /src with the project's locked gems installed and the
-  project root as working directory.
-  """
-  container(ws: Workspace!): Container! {
+  let bundler(ws: Workspace!, frozen: Boolean!): Container! {
     # The whole workspace, not only the root, so path gems and configuration
     # inherited from outside the project resolve as they do locally.
     let source = ws.directory("/", exclude: [".git"], gitignore: true)
     let project = source.directory(path)
     if (project.exists("Gemfile") == false) {
-      raise "no Gemfile in " + path + ": set root to the directory holding Gemfile and Gemfile.lock"
+      raise "no Gemfile in " + path + ": set root to the directory holding the Gemfile"
     }
-    if (project.exists("Gemfile.lock") == false) {
+    if (frozen and project.exists("Gemfile.lock") == false) {
       raise "no Gemfile.lock in " + path + ": run `bundle lock` there and commit Gemfile.lock"
     }
-    let installed = (base ?? Dagger.container.from("ruby:4.0@sha256:342dd3092e25f9d16fc2a5c48c5bb2d9a93717d4f900d005d6e088e2c45d3d19"))
+    (base ?? Dagger.container.from("ruby:4.0@sha256:342dd3092e25f9d16fc2a5c48c5bb2d9a93717d4f900d005d6e088e2c45d3d19"))
       # A project's .bundle/config outranks the environment, so point Bundler at
       # an empty app config: production settings must not drop the development
-      # and test groups tools live in, nor unfreeze the lockfile.
+      # and test groups tools live in, nor change whether the lockfile is frozen.
       .withEnvVariable("BUNDLE_APP_CONFIG", "/dagger-ruby/bundle-config")
-      .withEnvVariable("BUNDLE_FROZEN", "true")
+      .withEnvVariable("BUNDLE_FROZEN", if (frozen) { "true" } else { "false" })
       .withEnvVariable("BUNDLE_WITHOUT", "")
       .withDirectory("/src", source)
       .withWorkdir("/src/" + path)
-      .withExec(["bundle", "install"], expect: ANY)
+  }
+
+  """
+  The workspace at /src with the project's locked gems installed and the
+  project root as working directory.
+  """
+  container(ws: Workspace!): Container! {
+    let installed = bundler(ws, frozen: true).withExec(["bundle", "install"], expect: ANY)
     if (installed.exitCode != 0) {
       raise "bundle install failed in " + path + ":\n" + installed.stdout + installed.stderr
     }
     installed
+  }
+
+  """
+  The workspace at /src with Bundler configured but no gems installed and
+  Gemfile.lock writable, for commands that change the lockfile.
+  """
+  lockfileContainer(ws: Workspace!): Container! {
+    bundler(ws, frozen: false)
   }
 
   """

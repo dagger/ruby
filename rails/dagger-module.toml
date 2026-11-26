@@ -2,8 +2,8 @@ name = "rails"
 engineVersion = "v1.0.0-beta.25"
 
 [runtime]
-  source = "dang"
+source = "dang"
 
 [[dependencies]]
-  name = "ruby"
-  source = "../ruby"
+name = "ruby"
+source = "../ruby"

@@ -2,44 +2,48 @@ name = "e2e"
 engineVersion = "v1.0.0-beta.25"
 
 [runtime]
-  source = "dang"
+source = "dang"
 
 [[dependencies]]
-  name = "brakeman"
-  source = "../../../brakeman"
+name = "brakeman"
+source = "../../../brakeman"
 
 [[dependencies]]
-  name = "bundler-audit"
-  source = "../../../bundler-audit"
+name = "bundle"
+source = "../../../bundle"
 
 [[dependencies]]
-  name = "gem"
-  source = "../../../gem"
+name = "bundler-audit"
+source = "../../../bundler-audit"
 
 [[dependencies]]
-  name = "minitest"
-  source = "../../../minitest"
+name = "gem"
+source = "../../../gem"
 
 [[dependencies]]
-  name = "rails"
-  source = "../../../rails"
+name = "minitest"
+source = "../../../minitest"
 
 [[dependencies]]
-  name = "rspec"
-  source = "../../../rspec"
+name = "rails"
+source = "../../../rails"
 
 [[dependencies]]
-  name = "rubocop"
-  source = "../../../rubocop"
+name = "rspec"
+source = "../../../rspec"
 
 [[dependencies]]
-  name = "ruby"
-  source = "../../../ruby"
+name = "rubocop"
+source = "../../../rubocop"
 
 [[dependencies]]
-  name = "sorbet"
-  source = "../../../sorbet"
+name = "ruby"
+source = "../../../ruby"
 
 [[dependencies]]
-  name = "yard"
-  source = "../../../yard"
+name = "sorbet"
+source = "../../../sorbet"
+
+[[dependencies]]
+name = "yard"
+source = "../../../yard"
